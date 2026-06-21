@@ -56,10 +56,10 @@ analog "TOTP lock" board consumes the codes and drives an actuator.
 ```
 ephemerkey/
 ├── hardware/                    # PCB design (KiCad 10, CERN-OHL-P v2)
-│   ├── lib/
-│   │   ├── symbols/             # Project-specific KiCad symbols
-│   │   ├── footprints.pretty/   # Project-specific KiCad footprints
-│   │   └── 3dmodels/            # 3D STEP models
+│   ├── lib/                     # empty — anchor parts use KiCad bundled libs
+│   │   ├── symbols/             #   (reserved for future custom symbols)
+│   │   ├── footprints.pretty/   #   (reserved for future custom footprints)
+│   │   └── 3dmodels/            #   (reserved for future 3D STEP models)
 │   ├── ephemerkey/              # The generator board
 │   │   ├── ephemerkey.kicad_pro
 │   │   ├── ephemerkey.kicad_sch # Top-level: MCU, USB, SWD, button, LED

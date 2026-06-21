@@ -281,6 +281,36 @@ companion project; this interface is the contract between them.
 > **STM32U073KCU6** (UFQFPN-32, C22445363) is a drop-in alternative that drops
 > only the unused AES accelerator.
 
+### KiCad Library Map
+
+All five anchor parts are in **KiCad's bundled libraries** — no custom symbols
+or footprints are needed. When placing each part in the schematic, use the
+symbol below and assign the listed footprint, then set the `LCSC`, `MPN`, and
+`Manufacturer` fields (a project Field-Name Template pre-defining these three
+fields is recommended). The project's own symbol/footprint libs are kept empty,
+reserved for future non-standard parts.
+
+| Part | Symbol (lib:name) | Footprint (lib:name) | LCSC | MPN |
+|------|-------------------|----------------------|------|-----|
+| MCU | `MCU_ST_STM32U0:STM32U083KCU` | `Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | C22459164 | STM32U083KCU6 |
+| GNSS | `RF_GPS:MAX-M10S` | `RF_GPS:ublox_MAX` (symbol default) | C4153167 | MAX-M10S-00B |
+| Antenna | `Device:Antenna_Chip` (2-pin: feed+GND) | `RF_Antenna:Pulse_W3011` (pads 1,2,2) | C5830926 | W3011A |
+| Buck-boost | `Regulator_Switching:TPS63900` | `Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm` | C1518762 | TPS63900DSKR |
+| Accel | `Sensor_Motion:LIS3DH` | `Package_LGA:LGA-16_3x3mm_P0.5mm` | C15134 | LIS3DHTR |
+
+Manufacturers: STM32U083KCU6 / LIS3DHTR = STMicroelectronics; MAX-M10S-00B =
+u-blox; W3011A = Pulse Electronics; TPS63900DSKR = Texas Instruments.
+
+Notes:
+- `RF_GPS:MAX-M10S` symbol already defaults to the `RF_GPS:ublox_MAX` footprint
+  (18-pad LCC, the shared MAX-series land pattern) and carries the MAX-M10S
+  datasheet link.
+- `RF_Antenna:Pulse_W3011` has 3 pads numbered 1,2,2 (feed + two GND) — it pairs
+  with the 2-pin `Device:Antenna_Chip` symbol. Honor the antenna ground keep-out
+  (4.0 × 6.25 mm for the W3011A variant) and 50 Ω feed; see § GPS Antenna.
+- STM32 symbols ship with an empty Footprint field — assign the UFQFPN-32 one
+  above explicitly (use the `_ThermalVias` variant for the EP if preferred).
+
 ### Power Passives
 
 | Part | Value | Package | Qty | Purpose |

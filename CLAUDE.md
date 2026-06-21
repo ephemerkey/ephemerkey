@@ -17,8 +17,12 @@
 
 ## Hardware
 - KiCad project files live in hardware/ephemerkey/
-- Shared symbols: hardware/lib/symbols/ephemerkey.kicad_sym
-- Shared footprints: hardware/lib/footprints.pretty/
+- All 5 anchor parts use **KiCad bundled libraries** (symbols + footprints) —
+  see DESIGN.md "KiCad Library Map". No custom symbols/footprints needed.
+- hardware/lib/{symbols,footprints.pretty} + the lib-tables are kept empty,
+  reserved for any future part not in KiCad's standard libs.
+- LCSC/MPN/Manufacturer are set as symbol fields when parts are placed
+  (values in DESIGN.md); KiCad field-name template recommended.
 - Generate JLCPCB outputs: `cd hardware && make jlc`
 - Generate docs/images: `cd hardware && make docs`
 
