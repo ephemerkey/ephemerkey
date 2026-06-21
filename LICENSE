@@ -1,0 +1,9 @@
+This project uses dual licensing:
+
+- Firmware/Software: Apache License 2.0
+  See firmware/LICENSE for the full text.
+
+- Hardware Designs: CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P v2)
+  See https://ohwr.org/cern_ohl_p_v2.txt for the full text.
+
+Copyright (c) 2025-2026 EphemerKey Authors

@@ -1,0 +1,35 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "e2000000-0000-4000-8000-000000000002")
+	(paper "A3")
+	(title_block
+		(title "ephemerkey — Power Supply")
+		(date "2026-06-21")
+		(rev "0.1")
+		(comment 1 "Battery -> TPS63900 buck-boost -> 3V3")
+		(comment 2 "Ultra-low Iq for long battery life")
+	)
+	(lib_symbols
+	)
+
+	(text "Power Supply\n\nBattery input (1S Li-ion / 2xAA / LiSOCl2)\n  -> reverse-polarity protection + input cap\n  -> TPS63900DSKR buck-boost\n       L = 2.2uH shielded\n       Cin = 10uF, Cout = 2x10uF X7R\n       CFG1/2/3 + SEL strap = 3.3V out (optional 2nd preset)\n       EN tied on (or MCU-gated)\n  -> 3V3 rail:\n       STM32U083  VDD / VDDA-VREF+ / VDDUSB\n       MAX-M10S   VCC / VCC_RF (ferrite-isolated) / V_IO\n       LIS3DH     VDD / VDD_IO\n       V_BCKP tap (always-on, GNSS RTC/ephemeris backup)\n\nDecoupling: 100nF per supply pin + 4.7uF bulk on 3V3.\nVCC_RF: ferrite bead + 100nF/10pF for RF supply isolation.\n\nSee DESIGN.md (Power Tree) for budget and Open Questions\n(battery chemistry, GNSS power gating, CFG/SEL strapping)."
+		(exclude_from_sim no)
+		(at 25.4 25.4 0)
+		(effects
+			(font
+				(size 2.54 2.54)
+			)
+			(justify left top)
+		)
+		(uuid "f0000002-0001-0001-0001-000000000001")
+	)
+
+	(sheet_instances
+		(path "/e2000000-0000-4000-8000-000000000002"
+			(page "2")
+		)
+	)
+	(embedded_fonts no)
+)

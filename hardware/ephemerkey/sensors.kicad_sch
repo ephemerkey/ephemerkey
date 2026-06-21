@@ -1,0 +1,35 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "e4000000-0000-4000-8000-000000000004")
+	(paper "A3")
+	(title_block
+		(title "ephemerkey — Sensors")
+		(date "2026-06-21")
+		(rev "0.1")
+		(comment 1 "LIS3DH 3-axis accelerometer")
+		(comment 2 "Motion wake + tamper detection")
+	)
+	(lib_symbols
+	)
+
+	(text "Sensors\n\nLIS3DHTR (LGA-16) 3-axis accelerometer\n  - VDD / VDD_IO from 3V3 (PSU sheet), 100nF each\n  - I2C1 SCL/SDA <-> STM32 PB6/PB7 (4.7k pull-ups)\n  - SDO/SA0 strap sets I2C address (0x18 / 0x19)\n  - CS tied high (force I2C mode)\n  - INT1 -> STM32 PA2 (EXTI): wake-on-motion\n  - INT2 -> STM32 PA3 (EXTI): tamper / free-fall\n  - RES -> GND per datasheet; ADC1..3 unused (NC)\n\nRole:\n  - Wake the MCU from Stop mode only when handled (INT1)\n  - Tamper policy: optionally zeroize the TOTP secret on\n    motion-while-armed (INT2). See DESIGN.md (Security).\n\nInter-sheet nets: 3V3, GND, I2C1_SCL, I2C1_SDA,\nACC_INT1, ACC_INT2"
+		(exclude_from_sim no)
+		(at 25.4 25.4 0)
+		(effects
+			(font
+				(size 2.54 2.54)
+			)
+			(justify left top)
+		)
+		(uuid "f0000004-0001-0001-0001-000000000001")
+	)
+
+	(sheet_instances
+		(path "/e4000000-0000-4000-8000-000000000004"
+			(page "4")
+		)
+	)
+	(embedded_fonts no)
+)

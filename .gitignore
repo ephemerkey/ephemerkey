@@ -1,0 +1,31 @@
+# KiCad backup/autosave
+*.kicad_prl
+*-backups/
+_autosave-*
+*.bak
+*~
+
+# JLCPCB fab packages (regenerated via make jlc)
+hardware/*/jlcpcb/
+hardware/*/*-jlcpcb.zip
+
+# Generated SVGs (regenerated via make docs)
+hardware/*/docs/images/*.svg
+
+# Firmware build outputs
+firmware/**/build/
+firmware/**/*.elf
+firmware/**/*.bin
+firmware/**/*.hex
+firmware/**/*.map
+
+# Vendored SDKs (fetched locally, not committed)
+firmware/vendor/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

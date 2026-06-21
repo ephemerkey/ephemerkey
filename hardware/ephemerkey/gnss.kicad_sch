@@ -1,0 +1,35 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "e3000000-0000-4000-8000-000000000003")
+	(paper "A3")
+	(title_block
+		(title "ephemerkey — GNSS")
+		(date "2026-06-21")
+		(rev "0.1")
+		(comment 1 "MAX-M10S-00B + W3011A chip antenna")
+		(comment 2 "Time (UTC + 1PPS) and place (fix) source")
+	)
+	(lib_symbols
+	)
+
+	(text "GNSS Receiver\n\nW3011A chip antenna\n  -> pi-match (series + 2 shunt, tune at bring-up)\n  -> 50ohm controlled-impedance trace\n  -> MAX-M10S RF_IN\n  (passive antenna; MAX-M10S internal LNA + SAW provide gain)\n  Reserve a board corner; honor antenna ground keep-out.\n\nMAX-M10S-00B (u-blox M10)\n  - VCC / VCC_RF (ferrite-isolated) / V_IO from 3V3 (PSU sheet)\n  - V_BCKP from always-on 3V3 tap (hot-start retention)\n  - TXD/RXD <-> STM32 USART1 (PA9/PA10) NMEA/UBX @ 9600\n  - TIMEPULSE (1PPS) -> STM32 PA0 / TIM2_CH1 (RTC discipline)\n  - EXTINT <- STM32 PA1 (software wake / time-mark)\n  - RESET_N <- STM32 PA4 (open-drain)\n  - SDA/SCL (DDC/I2C): unused (UART used); terminate per datasheet\n  - SAFEBOOT_N: pulled per datasheet\n  - LNA_EN: leave for optional active antenna\n\nInter-sheet nets: 3V3, GND, V_BCKP, GNSS_TXD, GNSS_RXD,\nGNSS_PPS, GNSS_EXTINT, GNSS_RESET_N\n\nSee DESIGN.md (GNSS, GPS Antenna)."
+		(exclude_from_sim no)
+		(at 25.4 25.4 0)
+		(effects
+			(font
+				(size 2.54 2.54)
+			)
+			(justify left top)
+		)
+		(uuid "f0000003-0001-0001-0001-000000000001")
+	)
+
+	(sheet_instances
+		(path "/e3000000-0000-4000-8000-000000000003"
+			(page "3")
+		)
+	)
+	(embedded_fonts no)
+)
