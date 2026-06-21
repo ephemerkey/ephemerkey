@@ -261,16 +261,23 @@ companion project; this interface is the contract between them.
 
 ### Active Components
 
-| Part | MPN | Package | Qty | Purpose | LCSC |
-|------|-----|---------|-----|---------|------|
-| MCU | STM32U083KCU6 | UFQFPN-32 | 1 | ULP Cortex-M0+, RTC, USB, TOTP | TBD |
-| GNSS module | MAX-M10S-00B | LGA 9.7×10mm | 1 | u-blox M10 GNSS (time + place) | TBD |
-| GPS antenna | W3011A | SMD chip | 1 | 1.559–1.606 GHz passive antenna | TBD |
-| Buck-boost | TPS63900DSKR | VSON-10 | 1 | Battery → 3.3V, nanoamp Iq | TBD |
-| Accelerometer | LIS3DHTR | LGA-16 | 1 | Motion wake + tamper | C155602 |
+| Part | MPN | Package | Qty | Purpose | LCSC | Stock | JLC |
+|------|-----|---------|-----|---------|------|-------|-----|
+| MCU | STM32U083KCU6 | UFQFPN-32 | 1 | ULP Cortex-M0+, RTC, USB, TOTP | — (not stocked) | — | consign |
+| GNSS module | MAX-M10S-00B | LCC-18 9.7×10mm | 1 | u-blox M10 GNSS (time + place) | C4153167 | ~183 | extended |
+| GPS antenna | W3011A | 1206 SMD | 1 | 1.559–1.606 GHz passive antenna | C5830926 | ~101 | extended |
+| Buck-boost | TPS63900DSKR | WSON-10-EP | 1 | Battery → 3.3V, nanoamp Iq | C1518762 | ~4187 | extended |
+| Accelerometer | LIS3DHTR | LGA-16 3×3 | 1 | Motion wake + tamper | C15134 | ~89984 | extended |
 
-> LCSC numbers marked TBD — run `cd hardware && make bom` then resolve via the
-> `lcsc`/`bom` skills (the symbol `LCSC` property feeds the JLCPCB BOM).
+> LCSC numbers verified via the jlcsearch API (2026-06-21). Stock figures are a
+> snapshot — recheck before ordering. All stocked parts are **extended**
+> (JLCPCB per-part setup fee applies); none are basic parts.
+>
+> **STM32U083KCU6 is not in the LCSC/JLCPCB library** — it must be consigned
+> (source from DigiKey/Mouser and hand-place, or use PCBWay turnkey by MPN). If
+> JLCPCB assembly of the MCU is a hard requirement, the pin-compatible
+> **STM32U073KCU6** (UFQFPN-32, LCSC C22445363) is stocked — but it is a U073,
+> not a U083 (fewer/different peripherals); evaluate before substituting.
 
 ### Power Passives
 
