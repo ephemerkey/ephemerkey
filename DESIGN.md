@@ -382,6 +382,10 @@ Notes:
   (4.0 × 6.25 mm for the W3011A variant) and 50 Ω feed; see § GPS Antenna.
 - STM32 symbols ship with an empty Footprint field — assign the UFQFPN-32 one
   above explicitly (use the `_ThermalVias` variant for the EP if preferred).
+- **3D models:** the WSON-10, LGA-16, SOT-23/-5/-6, and GCT USB4105 footprints
+  carry bundled 3D models. **STM32U083KCU6 (UFQFPN-32), MAX-M10S, and W3011A have
+  no model in KiCad** (confirmed vs the upstream 3D repo) — download STEP files
+  into `hardware/lib/3dmodels/` and attach per `hardware/lib/3dmodels/README.md`.
 
 ### Power Passives
 
