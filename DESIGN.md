@@ -229,7 +229,8 @@ companion project; this interface is the contract between them.
 
 ## Resolved Decisions
 
-- **MCU:** STM32U083KCU6 (UFQFPN-32) — ULP Cortex-M0+, RTC, USB, 256KB flash.
+- **MCU:** STM32U083KCU6 (UFQFPN-32, LCSC C22459164) — ULP Cortex-M0+, RTC,
+  USB, 256KB flash. Kept over the JLCPCB-stocked STM32U073KCU6 to retain AES.
 - **GNSS:** MAX-M10S-00B over UART (USART1), PPS to TIM2 capture.
 - **Antenna:** W3011A passive chip antenna + π-match into RF_IN.
 - **Power:** TPS63900DSKR buck-boost, 3.3V out, single-cell input.
@@ -263,21 +264,22 @@ companion project; this interface is the contract between them.
 
 | Part | MPN | Package | Qty | Purpose | LCSC | Stock | JLC |
 |------|-----|---------|-----|---------|------|-------|-----|
-| MCU | STM32U083KCU6 | UFQFPN-32 | 1 | ULP Cortex-M0+, RTC, USB, TOTP | — (not stocked) | — | consign |
+| MCU | STM32U083KCU6 | UFQFPN-32 | 1 | ULP Cortex-M0+, RTC, USB, TOTP | C22459164 | ~10 | extended |
 | GNSS module | MAX-M10S-00B | LCC-18 9.7×10mm | 1 | u-blox M10 GNSS (time + place) | C4153167 | ~183 | extended |
 | GPS antenna | W3011A | 1206 SMD | 1 | 1.559–1.606 GHz passive antenna | C5830926 | ~101 | extended |
 | Buck-boost | TPS63900DSKR | WSON-10-EP | 1 | Battery → 3.3V, nanoamp Iq | C1518762 | ~4187 | extended |
 | Accelerometer | LIS3DHTR | LGA-16 3×3 | 1 | Motion wake + tamper | C15134 | ~89984 | extended |
 
-> LCSC numbers verified via the jlcsearch API (2026-06-21). Stock figures are a
-> snapshot — recheck before ordering. All stocked parts are **extended**
-> (JLCPCB per-part setup fee applies); none are basic parts.
+> LCSC numbers verified 2026-06-21 (jlcsearch API; STM32U083KCU6 confirmed on
+> the LCSC storefront under C22459164, which jlcsearch does not index). Stock
+> figures are a snapshot — recheck before ordering. All parts are JLCPCB
+> **extended** (per-part setup fee); none are basic.
 >
-> **STM32U083KCU6 is not in the LCSC/JLCPCB library** — it must be consigned
-> (source from DigiKey/Mouser and hand-place, or use PCBWay turnkey by MPN). If
-> JLCPCB assembly of the MCU is a hard requirement, the pin-compatible
-> **STM32U073KCU6** (UFQFPN-32, LCSC C22445363) is stocked — but it is a U073,
-> not a U083 (fewer/different peripherals); evaluate before substituting.
+> **STM32U083KCU6 (C22459164)** is in the LCSC/JLCPCB library, so the MCU is
+> JLCPCB-assemblable — but storefront stock is thin (~10), so verify availability
+> before an assembly run. If stock is short, the pin-compatible
+> **STM32U073KCU6** (UFQFPN-32, C22445363) is a drop-in alternative that drops
+> only the unused AES accelerator.
 
 ### Power Passives
 

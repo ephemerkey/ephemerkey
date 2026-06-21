@@ -20,7 +20,7 @@
       (at 0 0 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "LCSC" ""
+    (property "LCSC" "C22459164"
       (at 0 -30.48 0)
       (effects (font (size 1.27 1.27)) hide)
     )
@@ -34,6 +34,10 @@
     )
     (property "Description" "ARM Cortex-M0+ ULP MCU, 256KB Flash, RTC, USB FS, UFQFPN-32"
       (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "BOM Comments" "LCSC stock is thin (~10 on storefront) and this is a JLCPCB extended part — verify stock before an assembly run; alt: pin-compatible STM32U073KCU6 (C22445363), no AES." 
+      (at 0 -45.72 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (symbol "STM32U083KCU6_0_1"
