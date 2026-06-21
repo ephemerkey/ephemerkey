@@ -119,16 +119,33 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
 
 ## Power Tree
 
+Resolved: **1S Li-ion (rechargeable)**, **USB-C powers + charges + provisions**,
+GNSS kept hot via **V_BCKP** (see decisions below).
+
 ```
-  Battery ──┬── TPS63900DSKR ──── 3V3 rail
-  (1S Li-ion│    (buck-boost,        │
-   or 2×AA  │     nanoamp Iq,        ├── STM32U083  VDD / VDDA-VREF+ / VDDUSB (~5–25mA)
-   or       │     L = 2.2µH,         ├── MAX-M10S   VCC / VCC_RF / V_IO     (~25–30mA acq)
-   LiSOCl2) │     Cin/Cout per DS)   ├── LIS3DH     VDD / VDD_IO            (~10µA–2mA)
-           │                         ├── V_BCKP tap (always-on, GNSS RTC backup)
-           │                         └── pull-ups, LEDs
-           └── reverse-polarity + input cap + (optional) PTC/TVS
+ USB-C ─VBUS─┬─ USBLC6-2SC6 (ESD: VBUS, D+, D-)
+ (GCT        │      D+/D- ─────────────► STM32 USB (PA11/PA12)
+  USB4105)   │      CC1/CC2 ─ 5.1k ─ GND (UFP/sink)
+             │
+             ├─ MCP73831T-2ACI/OT ──BAT── 1S Li-ion ──┐  (charge; Rprog sets Ichg)
+             │   (VBUS in, STAT→LED)                  │
+             │                                        │
+             └─ Schottky ─┐                  load-share P-FET (AO3401A):
+                          ▼                  src=BAT, drn=SYS, gate=VBUS
+                         SYS ◄────────────────── ON when VBUS absent (run from BAT)
+                          │                       OFF when VBUS present (run from VBUS,
+                          │                                              charge cleanly)
+                          ▼
+                  TPS63900DSKR ──── 3V3 rail ──┬── STM32U083  VDD/VDDA-VREF+/VDDUSB (~5–25mA)
+                  (buck-boost,                 ├── MAX-M10S   VCC / VCC_RF / V_IO   (~25–30mA acq)
+                   ~75nA Iq, L=2.2µH,          ├── LIS3DH     VDD / VDD_IO          (~2µA–2mA)
+                   Cin/Cout per DS)            ├── V_BCKP tap (always-on, GNSS RTC/ephemeris backup)
+                                               └── pull-ups, LEDs
 ```
+
+SYS (TPS63900 VIN) is VBUS-via-Schottky (~4.7V) when USB present, else BAT
+(3.0–4.2V) — both inside the TPS63900 1.8–5.5V input range, so the buck-boost
+outputs a steady 3.3V either way.
 
 ### Buck-boost: TPS63900DSKR
 
@@ -137,6 +154,43 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
 - Output: 3.3V via CFG pins; SEL for second preset (sleep rail) if used.
 - EN: MCU-controllable or tied to VIN through a pull-up (always on).
 - Thermal pad to ground pour.
+
+### USB-C input + Li-ion charging
+
+Built from parts already used in sibling projects (BOM consolidation):
+
+- **USB-C receptacle:** GCT **USB4105-xx-A** 16-pin USB-2.0 receptacle
+  (MPN USB-TYPE-C-019, LCSC C2927039) — the house-standard connector
+  (footprint `Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal`,
+  used in pulsarfab + others). Alt: HRO `TYPE-C-31-M-12` (C165948, notchdeck).
+  - **CC1/CC2:** 5.1kΩ pull-downs to GND (device/sink/UFP role; advertises
+    default USB current). Two resistors, one per CC line.
+  - **D+/D-:** to STM32 USB (PA11/PA12), through the ESD device.
+  - **VBUS:** 10µF bulk + feeds charger and the SYS power path.
+  - **SHIELD:** to chassis/GND via a 1MΩ ∥ 4.7nF (or direct, TBD).
+- **ESD:** **USBLC6-2SC6** (SOT-23-6, LCSC C2687116) on VBUS/D+/D- — same part
+  the reefvolt/notchdeck boards use.
+- **Charger:** **MCP73831T-2ACI/OT** (SOT-23-5, LCSC C424093) — the house Li-ion
+  charger (used in notchdeck). Single-cell, 4.2V (the "-2" variant).
+  - VBUS → VDD (input); VBAT → battery (+) node; STAT → indicator LED + 1kΩ.
+  - **Rprog** sets charge current: I_chg ≈ 1000V / R_prog. Pick for the cell,
+    e.g. 4.7kΩ → ~210mA (≈0.5C of a 400–500mAh cell). 4.7µF on VDD and VBAT.
+  - **TODO:** finalize cell capacity → Rprog; add NTC/temperature qualification
+    only if the cell pack lacks its own protection.
+- **Power path (load sharing):** **AO3401A** P-FET (SOT-23, LCSC C15127) — the
+  house P-MOS. Standard Microchip/Adafruit load-share:
+  - Q: source=BAT, drain=SYS, gate→VBUS (100kΩ gate-to-GND pull-down).
+  - VBUS present → gate high → P-FET OFF → battery isolated from the system load
+    (charger sees only the battery → clean charge termination); SYS is fed from
+    VBUS through a small **Schottky** (e.g. house SS-series) → run + provision
+    from USB without cycling the battery.
+  - VBUS absent → gate pulled low → P-FET ON → battery powers SYS.
+- **Battery protection:** use a protected 1S Li-ion pack (integrated
+  over/under-voltage + over-current), or add a 1S protection IC (e.g. DW01 +
+  dual-FET) if using a bare cell. JST-PH 2-pin battery connector (house style).
+
+This keeps provisioning-over-USB clean (system runs from VBUS, battery charges)
+and adds no quiescent penalty when unplugged (P-FET on, ~75nA TPS63900 Iq path).
 
 ### Supply decoupling
 
@@ -233,23 +287,33 @@ companion project; this interface is the contract between them.
   USB, 256KB flash. Kept over the JLCPCB-stocked STM32U073KCU6 to retain AES.
 - **GNSS:** MAX-M10S-00B over UART (USART1), PPS to TIM2 capture.
 - **Antenna:** W3011A passive chip antenna + π-match into RF_IN.
-- **Power:** TPS63900DSKR buck-boost, 3.3V out, single-cell input.
+- **Power:** TPS63900DSKR buck-boost, 3.3V out.
+- **Battery:** 1S Li-ion (rechargeable), JST-PH; protected pack or add 1S
+  protection IC. Buck-boost spans the 3.0–4.2V discharge curve.
+- **USB-C:** powers + charges + provisions. GCT USB4105 (USB-TYPE-C-019,
+  C2927039), USBLC6-2SC6 ESD, MCP73831T-2ACI/OT charger, AO3401A load-share
+  P-FET — all house parts (see § USB-C input + Li-ion charging).
+- **GNSS power:** keep V_BCKP alive (~15µA) for hot starts (~1–2s vs ~25s cold);
+  MCU may still gate VCC via PA8.
 - **Accel:** LIS3DHTR on I2C1, INT1 wake / INT2 tamper.
 - **Time base:** STM32 RTC w/ LSE crystal, GNSS-disciplined.
 - **Code output:** UART line + open-drain CODE_VALID strobe.
 
 ## Open Questions
 
-1. **Battery chemistry / holder:** 1S Li-ion (with charger?) vs primary LiSOCl₂
-   vs 2×AA — drives input range, holder footprint, and whether a charger IC is
-   added.
-2. **GNSS power gating:** switch MAX-M10S VCC via a load switch (PA8/GNSS_EN) for
-   the lowest sleep current, or rely on the module's own backup mode + V_BCKP?
+1. ~~**Battery chemistry / holder**~~ **RESOLVED:** 1S Li-ion (rechargeable),
+   JST-PH connector; USB-C charges via MCP73831 + load-share. Use a protected
+   pack or add a 1S protection IC. Remaining: pick cell capacity → set Rprog.
+2. ~~**GNSS power gating**~~ **RESOLVED:** keep V_BCKP alive for hot starts
+   (energy math strongly favors it); optionally also gate VCC via PA8/GNSS_EN.
 3. **W3011A placement/keep-out:** confirm ground clearance and match topology
    against the antenna datasheet; reserve a board corner.
 4. **TPS63900 CFG/SEL strapping:** finalize the resistor/strap values for 3.3V
    primary + (optional) lower sleep rail, and whether SEL is MCU-driven.
-5. **Lock interface electrical level:** 3.3V logic direct, or opto-isolated /
+5. ~~**USB-C role**~~ **RESOLVED:** USB-C powers + charges + provisions
+   (GCT USB4105, MCP73831 charger, AO3401A load-share). Remaining: USB-C SHIELD
+   tie (direct vs 1MΩ∥cap).
+6. **Lock interface electrical level:** 3.3V logic direct, or opto-isolated /
    open-drain only? Depends on the companion lock board's input stage.
 6. **Provisioning UX:** USB CDC console only, or also a button-driven on-device
    secret-entry mode?
@@ -269,6 +333,10 @@ companion project; this interface is the contract between them.
 | GPS antenna | W3011A | 1206 SMD | 1 | 1.559–1.606 GHz passive antenna | C5830926 | ~101 | extended |
 | Buck-boost | TPS63900DSKR | WSON-10-EP | 1 | Battery → 3.3V, nanoamp Iq | C1518762 | ~4187 | extended |
 | Accelerometer | LIS3DHTR | LGA-16 3×3 | 1 | Motion wake + tamper | C15134 | ~89984 | extended |
+| USB-C conn | USB-TYPE-C-019 (GCT USB4105) | 16P SMD | 1 | USB-C power/charge/data | C2927039 | ~34k | extended |
+| Li-ion charger | MCP73831T-2ACI/OT | SOT-23-5 | 1 | 1S Li-ion charger (4.2V) | C424093 | ~2.7k | extended |
+| USB ESD | USBLC6-2SC6 | SOT-23-6 | 1 | USB VBUS/D± ESD | C2687116 | ~231k | extended |
+| Load-share FET | AO3401A | SOT-23 | 1 | USB/battery power path (P-FET) | C15127 | ~1.2M | extended |
 
 > LCSC numbers verified 2026-06-21 (jlcsearch API; STM32U083KCU6 confirmed on
 > the LCSC storefront under C22459164, which jlcsearch does not index). Stock
@@ -297,6 +365,10 @@ reserved for future non-standard parts.
 | Antenna | `Device:Antenna_Chip` (2-pin: feed+GND) | `RF_Antenna:Pulse_W3011` (pads 1,2,2) | C5830926 | W3011A |
 | Buck-boost | `Regulator_Switching:TPS63900` | `Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm` | C1518762 | TPS63900DSKR |
 | Accel | `Sensor_Motion:LIS3DH` | `Package_LGA:LGA-16_3x3mm_P0.5mm` | C15134 | LIS3DHTR |
+| USB-C | `Connector:USB_C_Receptacle_USB2.0_16P` | `Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal` | C2927039 | USB-TYPE-C-019 |
+| Charger | `Battery_Management:MCP73831-2-OT` | `Package_TO_SOT_SMD:SOT-23-5` | C424093 | MCP73831T-2ACI/OT |
+| USB ESD | `Power_Protection:USBLC6-2SC6` | `Package_TO_SOT_SMD:SOT-23-6` | C2687116 | USBLC6-2SC6 |
+| Load-share FET | `Device:Q_PMOS_GSD` | `Package_TO_SOT_SMD:SOT-23` | C15127 | AO3401A |
 
 Manufacturers: STM32U083KCU6 / LIS3DHTR = STMicroelectronics; MAX-M10S-00B =
 u-blox; W3011A = Pulse Electronics; TPS63900DSKR = Texas Instruments.
