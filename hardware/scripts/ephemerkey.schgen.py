@@ -77,7 +77,7 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
         dict(ref="J2", lib_id="Connector_Generic:Conn_01x04", value="LOCK OUT",
              fp="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"),
         dict(ref="DS1", lib_id="Display_Graphic:ER_OLEDM0.91_1x-I2C",
-             value="OLED 128x32 I2C", fp="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"),
+             value="OLED 128x32 I2C", fp="Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"),
     ],
     small=[
         dict(ref="Y1", lib_id="Device:Crystal", value="32.768kHz",

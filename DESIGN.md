@@ -370,7 +370,7 @@ reserved for future non-standard parts.
 | Charger | `Battery_Management:MCP73831-2-OT` | `Package_TO_SOT_SMD:SOT-23-5` | C424093 | MCP73831T-2ACI/OT |
 | USB ESD | `Power_Protection:USBLC6-2SC6` | `Package_TO_SOT_SMD:SOT-23-6` | C2687116 | USBLC6-2SC6 |
 | Load-share FET | `Device:Q_PMOS_GSD` | `Package_TO_SOT_SMD:SOT-23` | C15127 | AO3401A |
-| OLED (display) | `Display_Graphic:ER_OLEDM0.91_1x-I2C` | `Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical` | — | 128×32 I²C OLED module (DS1, 4-pin 0.1" header) |
+| OLED (display) | `Display_Graphic:ER_OLEDM0.91_1x-I2C` | `Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical` | — | 128×32 I²C OLED module (DS1, 4-pin 0.1" female socket) |
 
 Manufacturers: STM32U083KCU6 / LIS3DHTR = STMicroelectronics; MAX-M10S-00B =
 u-blox; W3011A = Pulse Electronics; TPS63900DSKR = Texas Instruments.
