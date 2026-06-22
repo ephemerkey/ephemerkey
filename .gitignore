@@ -30,3 +30,5 @@ firmware/vendor/
 .DS_Store
 Thumbs.db
 hardware/*/docs/images/*.png
+__pycache__/
+*.pyc
