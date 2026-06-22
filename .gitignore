@@ -32,3 +32,5 @@ Thumbs.db
 hardware/*/docs/images/*.png
 __pycache__/
 *.pyc
+*.lck
+~*.lck
