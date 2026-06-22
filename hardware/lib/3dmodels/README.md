@@ -7,19 +7,19 @@ WSON-10, LGA-16, SOD-123, 1x4 header).
 **Provided here** (vendored project models + a project footprint copy that points
 its `(model …)` at `${KIPRJMOD}/../lib/3dmodels/`):
 
-| Part | File | Footprint | Source |
-|------|------|-----------|--------|
+| Part | File / model | Footprint | Source |
+|------|--------------|-----------|--------|
 | MAX-M10S-00B (GNSS) | `ublox_MAX-M10S.step` | `ephemerkey:ublox_MAX` | u-blox MAX form-factor, fcmadwar/3D-Step-Models-Library (AP214) |
 | SW1–SW3 tactile (XKB TS-1187A) | `SW_Push_1P1T_XKB_TS-1187A.step` | `ephemerkey:SW_Push_1P1T_XKB_TS-1187A` | reused from the tsumikoro project |
+| STM32U083KCU6 (UFQFPN-32) | KiCad `QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm.step` | `ephemerkey:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | KiCad generic QFN-32 model (UFQFPN = ultra-thin same body; only height differs). No file vendored — model lives in KiCad's 3D dir. |
 
 > Verify the MAX model's offset/rotation in the 3D viewer at layout — third-party
 > STEP origins don't always match the KiCad footprint origin.
 
-**Still to download** (no model in KiCad; every source needs a free login):
+**Still to download** (no model in KiCad; source needs a free login):
 
 | Part | Drop file here as | Where to download |
 |------|-------------------|-------------------|
-| STM32U083KCU6 (UFQFPN-32) | `STM32U083KCU6.step` | ST CAD Resources: https://www.st.com/en/microcontrollers-microprocessors/stm32u083kc.html · or Ultra Librarian / SnapMagic / TraceParts |
 | W3011A (antenna) | `Pulse_W3011.step` | SnapMagic: https://www.snapeda.com/parts/W3011/PulseLarsen%20Antennas/ · Yageo (Pulse) part page |
 
 `J1` (SWD Tag-Connect TC2030-NL) intentionally has **no** 3D model and needs none

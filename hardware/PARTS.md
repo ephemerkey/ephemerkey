@@ -14,7 +14,7 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 
 | Ref | Value | MPN | LCSC | Footprint |
 |-----|-------|-----|------|-----------|
-| U1 | STM32U083KCU6 | STM32U083KCU6 | C22459164 | Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm |
+| U1 | STM32U083KCU6 | STM32U083KCU6 | C22459164 | ephemerkey:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm (project copy → generic QFN-32 3D model) |
 | MD1 | MAX-M10S-00B | MAX-M10S-00B | C4153167 | ephemerkey:ublox_MAX (project copy + vendored 3D model) |
 | AE1 | W3011A | W3011A | C5830926 | RF_Antenna:Pulse_W3011 |
 | U2 | TPS63900DSKR | TPS63900DSKR | C1518762 | Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm |

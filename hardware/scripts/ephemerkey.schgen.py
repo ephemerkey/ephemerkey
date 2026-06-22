@@ -69,7 +69,7 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
     page="2",
     big=[
         dict(ref="U1", lib_id="MCU_ST_STM32U0:STM32U083KCUx", value="STM32U083KCU6",
-             fp="Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm",
+             fp="ephemerkey:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm",
              lcsc="C22459164", mpn="STM32U083KCU6", mfr="STMicroelectronics"),
         dict(ref="J1", lib_id="Connector:Conn_ARM_SWD_TagConnect_TC2030-NL",
              value="SWD TC2030-NL",

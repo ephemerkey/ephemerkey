@@ -361,7 +361,7 @@ reserved for future non-standard parts.
 
 | Part | Symbol (lib:name) | Footprint (lib:name) | LCSC | MPN |
 |------|-------------------|----------------------|------|-----|
-| MCU | `MCU_ST_STM32U0:STM32U083KCUx` | `Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | C22459164 | STM32U083KCU6 |
+| MCU | `MCU_ST_STM32U0:STM32U083KCUx` | `ephemerkey:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` (project copy → generic QFN-32 3D model) | C22459164 | STM32U083KCU6 |
 | GNSS | `RF_GPS:MAX-M10S` | `ephemerkey:ublox_MAX` (project copy of RF_GPS:ublox_MAX + 3D model) | C4153167 | MAX-M10S-00B |
 | Antenna | `Device:Antenna_Chip` (2-pin: feed+GND) | `RF_Antenna:Pulse_W3011` (pads 1,2,2) | C5830926 | W3011A |
 | Buck-boost | `Regulator_Switching:TPS63900` | `Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm` | C1518762 | TPS63900DSKR |
@@ -389,8 +389,10 @@ Notes:
   at reset enters the STM32U0 ROM bootloader → **USB DFU** over USB-C (AN2606;
   crystal-less USB via HSI48+CRS). All three use `ephemerkey:SW_Push_1P1T_XKB_TS-1187A`.
 - **3D models:** most footprints carry bundled models. MAX-M10S and the SW
-  buttons are **vendored** in `lib/3dmodels/` (project footprint copies point at
-  them). **STM32U083KCU6 and W3011A still need a downloaded STEP** — see
+  buttons are **vendored** in `lib/3dmodels/`; the MCU's UFQFPN-32 footprint
+  (project copy) points at KiCad's **generic QFN-32-1EP_5x5mm_P0.5mm** model
+  (UFQFPN is the ultra-thin variant of the same body — only the height differs).
+  **Only W3011A still needs a downloaded STEP** — see
   `hardware/lib/3dmodels/README.md`.
 
 ### Power Passives
