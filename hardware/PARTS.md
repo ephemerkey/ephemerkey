@@ -40,6 +40,7 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | J4 | BAT 1S (JST PH RA) | S2B-PH-K-S | C173752 | Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal |
 | J1 | SWD | Conn_ARM_SWD_TagConnect_TC2030-NL | — | Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical |
 | J2 | LOCK OUT (1x4) | header 2.54 | — | Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical |
+| DS1 | OLED 128x32 I2C (1x4, 0.1") | `Display_Graphic:ER_OLEDM0.91_1x-I2C` | — | header 2.54: GND/VCC/SCL/SDA → I2C1 |
 | SW1–SW3 | USER1/2/3 (SW3=BOOT0/DFU) | TS-1187A-B-A-B | C318884 | ephemerkey:SW_Push_1P1T_XKB_TS-1187A (vendored from tsumikoro, has 3D model) |
 | D1 | LED green (status) | LTST-C281KGKT | C160479 | LED_SMD:LED_0402_1005Metric |
 | D2 / D4 | LED red (fault / charge) | NCD0402R1 | C130719 | LED_SMD:LED_0402_1005Metric |

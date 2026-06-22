@@ -34,6 +34,7 @@ K.register_stdlib("Switch", "SW_Push")
 K.register_stdlib("Connector", "USB_C_Receptacle_USB2.0_16P",
                   "Conn_ARM_SWD_TagConnect_TC2030-NL")
 K.register_stdlib("Connector_Generic", "Conn_01x02", "Conn_01x04")
+K.register_stdlib("Display_Graphic", "ER_OLEDM0.91_1x-I2C")  # 0.91" = 128x32 I2C OLED
 
 # ---- footprint shorthands ---------------------------------------------------
 R0402 = "Resistor_SMD:R_0402_1005Metric"
@@ -75,6 +76,8 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
              fp="Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"),
         dict(ref="J2", lib_id="Connector_Generic:Conn_01x04", value="LOCK OUT",
              fp="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"),
+        dict(ref="DS1", lib_id="Display_Graphic:ER_OLEDM0.91_1x-I2C",
+             value="OLED 128x32 I2C", fp="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"),
     ],
     small=[
         dict(ref="Y1", lib_id="Device:Crystal", value="32.768kHz",
@@ -197,7 +200,9 @@ BTN:  3 user buttons. SW1->PA5, SW2->PA15 active-low (MCU pull-ups, to GND).
       SW3->PF3/BOOT0 active-HIGH to +3V3 (R1 10k pulldown = default boot-from-flash).
       Hold SW3 at reset (NRST via J1 / power cycle) -> ROM bootloader -> USB DFU over USB-C
       (STM32U0 supports USB DFU, AN2606; crystal-less USB via HSI48+CRS).
-J2 LOCK OUT (1x4):  1 = +3V3   2 = LOCK_TX   3 = CODE_VALID   4 = GND   -> companion lock board.""")
+J2 LOCK OUT (1x4):  1 = +3V3   2 = LOCK_TX   3 = CODE_VALID   4 = GND   -> companion lock board.
+DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)  4 = SDA (PB7).
+      Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
 
 PSU["note"] = (12, 158, """Power — pinout (USB-C -> charge -> load-share -> buck-boost).  PLACED, not wired.
 J3  USB-C 16P:   VBUS -> VBUS_5V;  GND -> GND;  CC1 -> R4 5.1k -> GND;  CC2 -> R5 5.1k -> GND

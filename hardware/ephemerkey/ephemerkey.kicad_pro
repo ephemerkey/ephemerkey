@@ -690,7 +690,9 @@
     "subpart_id_separator": 0,
     "top_level_sheets": [
       {
-        "filename": "ephemerkey.kicad_sch"
+        "filename": "ephemerkey.kicad_sch",
+        "name": "",
+        "uuid": "ec65bc99-660e-415e-984b-47a2d6256a80"
       }
     ],
     "used_designators": "",
@@ -702,19 +704,19 @@
       "ephemerkey"
     ],
     [
-      "658d1a3c-85e5-4800-b1ed-3c6715163445",
+      "3c8d3540-f809-4f1b-b1a4-022df44b5c09",
       "MCU"
     ],
     [
-      "468a6a1e-fc8a-4415-a225-14ff3cdda228",
+      "a67a679b-c67a-403d-bd92-86d40d324792",
       "PSU"
     ],
     [
-      "d4eb3180-e0f3-4d35-9d94-5ab58fbdcb6f",
+      "a77d0041-d98c-4886-abc7-7fd295cde497",
       "GNSS"
     ],
     [
-      "f1f910ed-6ca7-4019-8219-b30ec139b122",
+      "450e8d46-54bf-4585-8d02-885fac9b1311",
       "Sensors"
     ]
   ],

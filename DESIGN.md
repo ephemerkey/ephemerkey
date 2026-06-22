@@ -317,8 +317,9 @@ companion project; this interface is the contract between them.
    open-drain only? Depends on the companion lock board's input stage.
 6. **Provisioning UX:** USB CDC console only, or also a button-driven on-device
    secret-entry mode?
-7. **Enclosure / display:** is a display fitted (manual code entry) or is the
-   UART-to-lock path the only output?
+7. ~~**Display**~~ **RESOLVED:** a 128×32 I²C OLED (DS1) mounts on a 4-pin 0.1"
+   header on I²C1 (shares the bus with U5 LIS3DH; addresses 0x3C vs 0x18). Shows
+   the code / status for manual entry. (Enclosure style still TBD.)
 8. **LSE vs internal:** is a 32.768kHz crystal populated, or run RTC from LSI +
    GNSS discipline only (cheaper, less accurate between fixes)?
 
@@ -369,6 +370,7 @@ reserved for future non-standard parts.
 | Charger | `Battery_Management:MCP73831-2-OT` | `Package_TO_SOT_SMD:SOT-23-5` | C424093 | MCP73831T-2ACI/OT |
 | USB ESD | `Power_Protection:USBLC6-2SC6` | `Package_TO_SOT_SMD:SOT-23-6` | C2687116 | USBLC6-2SC6 |
 | Load-share FET | `Device:Q_PMOS_GSD` | `Package_TO_SOT_SMD:SOT-23` | C15127 | AO3401A |
+| OLED (display) | `Display_Graphic:ER_OLEDM0.91_1x-I2C` | `Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical` | — | 128×32 I²C OLED module (DS1, 4-pin 0.1" header) |
 
 Manufacturers: STM32U083KCU6 / LIS3DHTR = STMicroelectronics; MAX-M10S-00B =
 u-blox; W3011A = Pulse Electronics; TPS63900DSKR = Texas Instruments.
