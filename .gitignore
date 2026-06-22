@@ -29,3 +29,4 @@ firmware/vendor/
 # OS
 .DS_Store
 Thumbs.db
+hardware/*/docs/images/*.png

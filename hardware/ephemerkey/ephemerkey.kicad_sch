@@ -5,149 +5,78 @@
 	(uuid "e1000000-0000-4000-8000-000000000001")
 	(paper "A3")
 	(title_block
-		(title "ephemerkey — Main")
+		(title "ephemerkey")
 		(date "2026-06-21")
 		(rev "0.1")
-		(comment 1 "STM32U083KCU6 + MAX-M10S GNSS + LIS3DH + TPS63900")
-		(comment 2 "GPS-geofenced TOTP (RFC 6238) code generator")
-		(comment 3 "CERN-OHL-P v2 / Apache 2.0")
-		(comment 4 "EphemerKey Authors")
+		(company "EphemerKey Authors")
+		(comment 1 "GPS-geofenced TOTP (RFC 6238) generator")
+		(comment 2 "Top-level — hierarchical sheets per subsystem")
 	)
-	(lib_symbols
-	)
-
-	(text "ephemerkey\nTop-Level Sheet\n\nSTM32U083KCU6 (UFQFPN-32): ULP Cortex-M0+, RTC time base, USB FS\n  - USART1 (PA9/PA10) <-> MAX-M10S NMEA/UBX (see GNSS sheet)\n  - TIM2_CH1 (PA0) <- GNSS TIMEPULSE 1PPS (RTC discipline)\n  - I2C1 (PB6/PB7) <-> LIS3DH (see Sensors sheet)\n  - USB DM/DP (PA11/PA12): provisioning / console\n  - SWD (PA13/PA14): debug header\n  - Button (PA5), LEDs green/red (PA6/PA7)\n  - LOCK_TX (PB0) + CODE_VALID strobe (PB1) -> companion lock board\n  - LSE 32.768kHz crystal on PC14/PC15 (RTC)\n\nInter-sheet buses: 3V3, GND, GNSS UART/PPS/EXTINT/RESET, I2C1, V_BCKP\n\nSee DESIGN.md for the full pin budget and architecture."
-		(exclude_from_sim no)
-		(at 25.4 25.4 0)
-		(effects
-			(font
-				(size 2.54 2.54)
-			)
-			(justify left top)
-		)
-		(uuid "f0000001-0001-0001-0001-000000000001")
-	)
-
+	(lib_symbols)
 	(sheet
-		(at 25.4 177.8)
-		(size 30.48 15.24)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
+		(at 40.64 40.64)
+		(size 36.00 22.00)
 		(fields_autoplaced yes)
-		(stroke
-			(width 0.1524)
-			(type solid)
+		(stroke (width 0.1524) (type solid))
+		(fill (color 0 0 0 0.0000))
+		(uuid "82e7264a-0373-4685-a293-9133571d5c41")
+		(property "Sheetname" "MCU"
+			(at 40.64 39.37 0)
+			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
-		(fill
-			(color 255 255 225 1)
+		(property "Sheetfile" "mcu.kicad_sch"
+			(at 40.64 63.91 0)
+			(effects (font (size 1.27 1.27)) (justify left top))
 		)
-		(uuid "e2000000-0000-4000-8000-000000000002")
+	)
+	(sheet
+		(at 96.52 40.64)
+		(size 36.00 22.00)
+		(fields_autoplaced yes)
+		(stroke (width 0.1524) (type solid))
+		(fill (color 0 0 0 0.0000))
+		(uuid "7e025a9d-ebf2-4ae9-8fef-b1c21eacd38d")
 		(property "Sheetname" "PSU"
-			(at 25.4 177.0884 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
+			(at 96.52 39.37 0)
+			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
 		(property "Sheetfile" "psu.kicad_sch"
-			(at 25.4 193.6146 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left top)
-			)
+			(at 96.52 63.91 0)
+			(effects (font (size 1.27 1.27)) (justify left top))
 		)
 	)
-
 	(sheet
-		(at 63.5 177.8)
-		(size 30.48 15.24)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
+		(at 152.40 40.64)
+		(size 36.00 22.00)
 		(fields_autoplaced yes)
-		(stroke
-			(width 0.1524)
-			(type solid)
-		)
-		(fill
-			(color 225 255 225 1)
-		)
-		(uuid "e3000000-0000-4000-8000-000000000003")
+		(stroke (width 0.1524) (type solid))
+		(fill (color 0 0 0 0.0000))
+		(uuid "c17334e3-27d7-4e80-b754-59599b68199a")
 		(property "Sheetname" "GNSS"
-			(at 63.5 177.0884 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
+			(at 152.40 39.37 0)
+			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
 		(property "Sheetfile" "gnss.kicad_sch"
-			(at 63.5 193.6146 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left top)
-			)
+			(at 152.40 63.91 0)
+			(effects (font (size 1.27 1.27)) (justify left top))
 		)
 	)
-
 	(sheet
-		(at 101.6 177.8)
-		(size 30.48 15.24)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
+		(at 208.28 40.64)
+		(size 36.00 22.00)
 		(fields_autoplaced yes)
-		(stroke
-			(width 0.1524)
-			(type solid)
-		)
-		(fill
-			(color 225 235 255 1)
-		)
-		(uuid "e4000000-0000-4000-8000-000000000004")
+		(stroke (width 0.1524) (type solid))
+		(fill (color 0 0 0 0.0000))
+		(uuid "1e926eec-7edd-43b0-8208-0483c976793a")
 		(property "Sheetname" "Sensors"
-			(at 101.6 177.0884 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
+			(at 208.28 39.37 0)
+			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
 		(property "Sheetfile" "sensors.kicad_sch"
-			(at 101.6 193.6146 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left top)
-			)
+			(at 208.28 63.91 0)
+			(effects (font (size 1.27 1.27)) (justify left top))
 		)
 	)
-
 	(sheet_instances
 		(path "/"
 			(page "1")

@@ -17,14 +17,19 @@
 
 ## Hardware
 - KiCad project files live in hardware/ephemerkey/
-- All 5 anchor parts use **KiCad bundled libraries** (symbols + footprints) —
-  see DESIGN.md "KiCad Library Map". No custom symbols/footprints needed.
-- hardware/lib/{symbols,footprints.pretty} + the lib-tables are kept empty,
-  reserved for any future part not in KiCad's standard libs.
-- LCSC/MPN/Manufacturer are set as symbol fields when parts are placed
-  (values in DESIGN.md); KiCad field-name template recommended.
-- Generate JLCPCB outputs: `cd hardware && make jlc`
-- Generate docs/images: `cd hardware && make docs`
+- **The schematic is GENERATED from a data manifest, not hand-edited.** Edit
+  `hardware/scripts/ephemerkey.schgen.py` then `cd hardware && make gen-ephemerkey`.
+  Components are PLACED, not wired — wiring is an eeschema phase guided by the
+  per-sheet on-canvas notes. Regenerate BEFORE wiring (regen reassigns UUIDs).
+- All parts use **KiCad bundled libraries** (symbols + footprints); see DESIGN.md
+  "KiCad Library Map" and `hardware/PARTS.md` (BOM → real JLCPCB LCSC). The
+  project's own lib/symbols + lib/footprints.pretty are kept empty for future
+  non-standard parts.
+- `make check-ephemerkey` — components/footprints/dup-refs/ERC tally.
+- `make render-ephemerkey` — per-sheet PNGs for review.
+- `make docs` (images + BOM) · `make jlc` (JLCPCB fab+assembly zip).
+- Close KiCad before regenerating; `extends`-symbols show a benign
+  lib_symbol_mismatch in ERC until first saved in eeschema.
 
 ## Firmware
 - STM32U083 app: firmware/ephemerkey-stm32/ (STM32CubeU0 HAL)

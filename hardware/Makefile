@@ -29,7 +29,7 @@ SCRIPTS_DIR := scripts
 JLC_SCRIPT  := $(SCRIPTS_DIR)/jlcpcb-package.sh
 
 .PHONY: all docs jlc clean-docs clean-jlc help
-.PHONY: $(foreach p,$(PROJECTS),docs-$(p) images-$(p) bom-$(p) jlc-$(p))
+.PHONY: $(foreach p,$(PROJECTS),docs-$(p) images-$(p) bom-$(p) jlc-$(p) gen-$(p) check-$(p) render-$(p))
 
 all: docs
 
@@ -105,6 +105,19 @@ jlc-$(1): $$(JLC_SCRIPT) $$($(1)_PCB) $$($(1)_SCH)
 	@echo "[jlcpcb] building package for $(1)"
 	cd $$($(1)_DIR) && KICAD_CLI=$$(KICAD_CLI) ../$$(JLC_SCRIPT) \
 	    $(1).kicad_pcb $(1).kicad_sch
+
+# Regenerate the schematic from its data manifest (placed, not wired).
+gen-$(1): $(SCRIPTS_DIR)/$(1).schgen.py
+	@echo "[$(1)] generating schematic from manifest"
+	python3 $(SCRIPTS_DIR)/$(1).schgen.py
+
+# Sanity-check the schematic: component count, footprints, dup refs, ERC tally.
+check-$(1): $$($(1)_SCH)
+	@KICAD_CLI=$$(KICAD_CLI) python3 $(SCRIPTS_DIR)/kicad-sch-check.py $$($(1)_SCH)
+
+# Render every sheet to PNG for a quick visual review.
+render-$(1): $$($(1)_SCH)
+	@KICAD_CLI=$$(KICAD_CLI) $(SCRIPTS_DIR)/kicad-sch-render.sh $$($(1)_SCH)
 
 endef
 

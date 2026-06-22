@@ -360,7 +360,7 @@ reserved for future non-standard parts.
 
 | Part | Symbol (lib:name) | Footprint (lib:name) | LCSC | MPN |
 |------|-------------------|----------------------|------|-----|
-| MCU | `MCU_ST_STM32U0:STM32U083KCU` | `Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | C22459164 | STM32U083KCU6 |
+| MCU | `MCU_ST_STM32U0:STM32U083KCUx` | `Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | C22459164 | STM32U083KCU6 |
 | GNSS | `RF_GPS:MAX-M10S` | `RF_GPS:ublox_MAX` (symbol default) | C4153167 | MAX-M10S-00B |
 | Antenna | `Device:Antenna_Chip` (2-pin: feed+GND) | `RF_Antenna:Pulse_W3011` (pads 1,2,2) | C5830926 | W3011A |
 | Buck-boost | `Regulator_Switching:TPS63900` | `Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm` | C1518762 | TPS63900DSKR |
