@@ -19,7 +19,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "7d068361-f4fb-454d-ba2c-feb9d573108b")
+		(uuid "658d1a3c-85e5-4800-b1ed-3c6715163445")
 		(property "Sheetname" "MCU"
 			(at 40.64 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -35,7 +35,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "5585cd5f-80b7-4b24-abc8-721ca16853b0")
+		(uuid "468a6a1e-fc8a-4415-a225-14ff3cdda228")
 		(property "Sheetname" "PSU"
 			(at 96.52 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -51,7 +51,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "bd4499f4-3240-4f39-b587-551f4e920631")
+		(uuid "d4eb3180-e0f3-4d35-9d94-5ab58fbdcb6f")
 		(property "Sheetname" "GNSS"
 			(at 152.40 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -67,7 +67,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "839db5ae-e5cf-439c-84ec-b2fb949c31ee")
+		(uuid "f1f910ed-6ca7-4019-8219-b30ec139b122")
 		(property "Sheetname" "Sensors"
 			(at 208.28 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))

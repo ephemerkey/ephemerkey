@@ -109,20 +109,36 @@ def _extends_of(blk):
     return m.group(1) if m else None
 
 
+def _flattened_block(path, name):
+    """Return symbol NAME's block as a self-contained symbol. If it (extends ...)
+    a parent, re-base the parent's full block (graphics + pins) onto NAME and drop
+    the extends, so the symbol renders standalone. KiCad/eeschema resolves extends
+    at load time, but kicad-cli's exporters do NOT — an unresolved derived symbol
+    renders blank. Flattening here makes generated sheets render everywhere.
+    Recurses through extends chains."""
+    blk = extract(path, name)
+    parent = _extends_of(blk)
+    if not parent:
+        return blk
+    pblk = _flattened_block(path, parent)
+    # rename the parent's graphic sub-symbols (PARENT_x_y -> NAME_x_y) then its
+    # top symbol (PARENT -> NAME); property values (cosmetic) keep parent text —
+    # the placed instance carries the real Reference/Value/Footprint/LCSC/MPN.
+    g = pblk.replace('(symbol "' + parent + '_', '(symbol "' + name + '_')
+    g = re.sub(r'^(\s*)\(symbol "' + re.escape(parent) + '"',
+               r'\1(symbol "' + name + '"', g, count=1)
+    return g
+
+
 def cache_entries(lib_id, acc=None):
-    """Cache blocks for lib_id, with any (extends ...) parents emitted first so
-    KiCad can resolve inheritance. Returns ordered list of (lib_id, block)."""
+    """Cache the flattened block for lib_id (extends resolved/inlined so each
+    symbol renders standalone). Returns ordered list of (lib_id, block)."""
     if acc is None:
         acc = []
     if lib_id in [e[0] for e in acc]:
         return acc
     path, name = SRC[lib_id]
-    blk = extract(path, name)
-    parent = _extends_of(blk)
-    if parent:
-        plid = f"{lib_id.split(':')[0]}:{parent}"
-        SRC.setdefault(plid, (path, parent))
-        cache_entries(plid, acc)
+    blk = _flattened_block(path, name)
     entry = re.sub(r'^(\s*)\(symbol "' + re.escape(name) + '"',
                    r'\1(symbol "' + lib_id + '"', blk, count=1)
     acc.append((lib_id, entry))
