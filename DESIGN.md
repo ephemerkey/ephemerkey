@@ -216,7 +216,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 8 | PA2 | LIS3DH INT1 | EXTI wake-on-motion |
 | 9 | PA3 | LIS3DH INT2 | EXTI tamper / free-fall |
 | 10 | PA4 | GNSS RESET_N | open-drain output to GNSS |
-| 11 | PA5 | Button | provision / show-code (internal pull-up) |
+| 11 | PA5 | Button | SW1 user button 1 (internal pull-up, to GND) |
 | 12 | PA6 | LED green | in-fence / code-valid |
 | 13 | PA7 | LED red | out-of-fence / fault |
 | 14 | PB0 | LOCK_TX | USART → companion lock board |
@@ -230,13 +230,13 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 22 | PA12 | USB_DP | USB FS (provisioning/console) |
 | 23 | PA13 | SWDIO | debug |
 | 24 | PA14 | SWCLK | debug |
-| 25 | PA15 | Spare | |
+| 25 | PA15 | Button | SW2 user button 2 (internal pull-up, to GND) |
 | 26 | PB3 | Spare | |
 | 27 | PB4 | Spare | |
 | 28 | PB5 | Spare | |
 | 29 | PB6 | I2C1_SCL | LIS3DH (and optional GNSS DDC) |
 | 30 | PB7 | I2C1_SDA | LIS3DH (and optional GNSS DDC) |
-| 31 | PF3-BOOT0 | BOOT0 | 10k pull-down (boot from flash) |
+| 31 | PF3-BOOT0 | Button + BOOT0 | SW3 user button 3 (to +3V3); 10k pull-down = boot from flash. Hold SW3 at reset → USB DFU |
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
@@ -361,7 +361,7 @@ reserved for future non-standard parts.
 | Part | Symbol (lib:name) | Footprint (lib:name) | LCSC | MPN |
 |------|-------------------|----------------------|------|-----|
 | MCU | `MCU_ST_STM32U0:STM32U083KCUx` | `Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | C22459164 | STM32U083KCU6 |
-| GNSS | `RF_GPS:MAX-M10S` | `RF_GPS:ublox_MAX` (symbol default) | C4153167 | MAX-M10S-00B |
+| GNSS | `RF_GPS:MAX-M10S` | `ephemerkey:ublox_MAX` (project copy of RF_GPS:ublox_MAX + 3D model) | C4153167 | MAX-M10S-00B |
 | Antenna | `Device:Antenna_Chip` (2-pin: feed+GND) | `RF_Antenna:Pulse_W3011` (pads 1,2,2) | C5830926 | W3011A |
 | Buck-boost | `Regulator_Switching:TPS63900` | `Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm` | C1518762 | TPS63900DSKR |
 | Accel | `Sensor_Motion:LIS3DH` | `Package_LGA:LGA-16_3x3mm_P0.5mm` | C15134 | LIS3DHTR |
@@ -374,18 +374,22 @@ Manufacturers: STM32U083KCU6 / LIS3DHTR = STMicroelectronics; MAX-M10S-00B =
 u-blox; W3011A = Pulse Electronics; TPS63900DSKR = Texas Instruments.
 
 Notes:
-- `RF_GPS:MAX-M10S` symbol already defaults to the `RF_GPS:ublox_MAX` footprint
-  (18-pad LCC, the shared MAX-series land pattern) and carries the MAX-M10S
-  datasheet link.
+- GNSS footprint is `ephemerkey:ublox_MAX` — a project copy of the bundled
+  `RF_GPS:ublox_MAX` (18-pad LCC, shared MAX-series land pattern) with its
+  `(model …)` repointed to the vendored `lib/3dmodels/ublox_MAX-M10S.step`.
 - `RF_Antenna:Pulse_W3011` has 3 pads numbered 1,2,2 (feed + two GND) — it pairs
   with the 2-pin `Device:Antenna_Chip` symbol. Honor the antenna ground keep-out
   (4.0 × 6.25 mm for the W3011A variant) and 50 Ω feed; see § GPS Antenna.
 - STM32 symbols ship with an empty Footprint field — assign the UFQFPN-32 one
   above explicitly (use the `_ThermalVias` variant for the EP if preferred).
-- **3D models:** the WSON-10, LGA-16, SOT-23/-5/-6, and GCT USB4105 footprints
-  carry bundled 3D models. **STM32U083KCU6 (UFQFPN-32), MAX-M10S, and W3011A have
-  no model in KiCad** (confirmed vs the upstream 3D repo) — download STEP files
-  into `hardware/lib/3dmodels/` and attach per `hardware/lib/3dmodels/README.md`.
+- **User buttons (×3):** SW1→PA5, SW2→PA15 (active-low, MCU pull-ups). SW3→PF3/
+  BOOT0 (active-high to +3V3; R1 10k pulldown = default flash boot). Holding SW3
+  at reset enters the STM32U0 ROM bootloader → **USB DFU** over USB-C (AN2606;
+  crystal-less USB via HSI48+CRS). All three use `ephemerkey:SW_Push_1P1T_XKB_TS-1187A`.
+- **3D models:** most footprints carry bundled models. MAX-M10S and the SW
+  buttons are **vendored** in `lib/3dmodels/` (project footprint copies point at
+  them). **STM32U083KCU6 and W3011A still need a downloaded STEP** — see
+  `hardware/lib/3dmodels/README.md`.
 
 ### Power Passives
 

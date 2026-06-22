@@ -45,7 +45,7 @@ SOT235 = "Package_TO_SOT_SMD:SOT-23-5"
 SOT236 = "Package_TO_SOT_SMD:SOT-23-6"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOD123 = "Diode_SMD:D_SOD-123"
-BTN = "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A"
+BTN = "ephemerkey:SW_Push_1P1T_XKB_TS-1187A"
 
 # JLCPCB LCSC for the common 0402 Basic passives
 RLCSC = {"5.1k": "C25905", "4.7k": "C25900", "10k": "C25744",
@@ -86,7 +86,11 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
         C("C7", "1uF"), C("C8", "100nF"),                # VDDA/VREF+ filter
         C("C9", "100nF"),                                # NRST cap
         R("R1", "10k"),                                  # BOOT0 pulldown
-        dict(ref="SW1", lib_id="Switch:SW_Push", value="PROV/SHOW", fp=BTN,
+        dict(ref="SW1", lib_id="Switch:SW_Push", value="USER1", fp=BTN,
+             lcsc="C318884", mpn="TS-1187A-B-A-B"),
+        dict(ref="SW2", lib_id="Switch:SW_Push", value="USER2", fp=BTN,
+             lcsc="C318884", mpn="TS-1187A-B-A-B"),
+        dict(ref="SW3", lib_id="Switch:SW_Push", value="USER3/DFU", fp=BTN,
              lcsc="C318884", mpn="TS-1187A-B-A-B"),
         dict(ref="D1", lib_id="Device:LED", value="GRN", fp=LED0402,
              lcsc="C160479", mpn="LTST-C281KGKT", mfr="Lite-On"),
@@ -139,7 +143,7 @@ GNSS = dict(name="GNSS", file="gnss.kicad_sch", title="GNSS (MAX-M10S + antenna)
     page="4",
     big=[
         dict(ref="MD1", lib_id="RF_GPS:MAX-M10S", value="MAX-M10S-00B",
-             fp="RF_GPS:ublox_MAX", lcsc="C4153167", mpn="MAX-M10S-00B", mfr="u-blox"),
+             fp="ephemerkey:ublox_MAX", lcsc="C4153167", mpn="MAX-M10S-00B", mfr="u-blox"),
         dict(ref="AE1", lib_id="Device:Antenna_Chip", value="W3011A",
              fp="RF_Antenna:Pulse_W3011", lcsc="C5830926", mpn="W3011A",
              mfr="Pulse Electronics"),
@@ -168,34 +172,72 @@ SENSORS = dict(name="Sensors", file="sensors.kicad_sch",
         R("R9", "4.7k"), R("R10", "4.7k"),                # I2C1 pull-ups
     ])
 
-# ============================ wiring notes ===================================
-MCU["note"] = (15, 150, """ephemerkey — MCU / RTC / Programming (U1 STM32U083KCU6, UFQFPN-32). PLACED, not wired. Pin#=package pin (DESIGN.md pin budget).
-POWER: VDD(1)+VDDUSB(17)->+3V3 (C3,C5 100nF each); VDDA/VREF+(5)->+3V3 via C7 1uF+C8 100nF; EP(33)+VSS(16,32)->GND; C6 10uF bulk on +3V3.
-RTC LSE: Y1 32.768kHz -> PC14/OSC32_IN(2), PC15/OSC32_OUT(3); C1,C2 load caps (12pF shown — match to Y1 CL via 2*(CL-Cstray), trim w/ RTC SMOOTHCALIB).
-RESET/BOOT: NRST(4)+C9 100nF to GND; BOOT0/PF3(31) -> R1 10k to GND.
-USB: PA11(21)=USB_DM, PA12(22)=USB_DP  <- from PSU sheet via U3 ESD.   SWD: PA13/SWDIO(23), PA14/SWCLK(24) -> J1 (+3V3,GND,NRST too).
-UI: SW1 -> PA5(11) (internal pull-up); D1 GRN+R2 1k -> PA6(12); D2 RED+R3 1k -> PA7(13).
-GNSS (to GNSS sheet): USART1 PA9(19)->GNSS RXD, PA10(20)<-GNSS TXD; PA0(6)=TIMEPULSE/1PPS (TIM2_CH1); PA1(7)=EXTINT; PA4(10)=GNSS RESET_N (OD); PA8(18)=GNSS_EN.
-I2C1 (to Sensors): PB6(29)=SCL, PB7(30)=SDA. ACC INT: PA2(8)=INT1, PA3(9)=INT2.
-LOCK OUT J2: 1=+3V3, 2=LOCK_TX/PB0(14), 3=CODE_VALID/PB1(15) (open-drain), 4=GND.  Spare: PA15(25),PB3(26),PB4(27),PB5(28).""")
+# ============================ wiring notes (pinout guides) ====================
+MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6, UFQFPN-32).  PLACED, not wired.
+ pin  name            net / function           pin  name            net / function
+  1   VDD             +3V3  (C3 100nF)           17  VDDUSB          +3V3  (C5 100nF)
+  2   PC14/OSC32_IN   Y1 LSE 32.768kHz           18  PA8             GNSS_EN  -> GNSS
+  3   PC15/OSC32_OUT  Y1 LSE 32.768kHz           19  PA9             USART1_TX -> GNSS RXD
+  4   PF2/NRST        NRST (C9 100nF, J1)        20  PA10            USART1_RX <- GNSS TXD
+  5   VDDA/VREF+      +3V3 (C7 1uF, C8 100nF)    21  PA11            USB_DM   (<- U3 ESD)
+  6   PA0             GNSS_PPS (TIM2_CH1 in)     22  PA12            USB_DP   (<- U3 ESD)
+  7   PA1             GNSS_EXTINT (out)          23  PA13            SWDIO (J1)
+  8   PA2             ACC_INT1 (EXTI wake)       24  PA14            SWCLK (J1)
+  9   PA3             ACC_INT2 (EXTI tamper)     25  PA15            BTN2 SW2 (pull-up)
+ 10   PA4             GNSS_RESET_N (OD out)      26  PB3             spare
+ 11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             spare
+ 12   PA6             LED_GRN  D1 + R2 1k        28  PB5             spare
+ 13   PA7             LED_RED  D2 + R3 1k        29  PB6             I2C1_SCL -> U5
+ 14   PB0             LOCK_TX  -> J2.2           30  PB7             I2C1_SDA -> U5
+ 15   PB1             CODE_VALID (OD) -> J2.3    31  PF3/BOOT0       BTN3 SW3 + DFU
+ 16   VSS             GND                        32  VSS  / EP       GND
+RTC:  Y1 32.768kHz across PC14/PC15; C1,C2 12pF load caps (match to Y1 CL; trim via RTC SMOOTHCALIB).
+PWR:  +3V3 from PSU sheet, C6 10uF bulk.   J1 = SWD TC2030-NL: SWDIO, SWCLK, NRST, +3V3, GND.
+BTN:  3 user buttons. SW1->PA5, SW2->PA15 active-low (MCU pull-ups, to GND).
+      SW3->PF3/BOOT0 active-HIGH to +3V3 (R1 10k pulldown = default boot-from-flash).
+      Hold SW3 at reset (NRST via J1 / power cycle) -> ROM bootloader -> USB DFU over USB-C
+      (STM32U0 supports USB DFU, AN2606; crystal-less USB via HSI48+CRS).
+J2 LOCK OUT (1x4):  1 = +3V3   2 = LOCK_TX   3 = CODE_VALID   4 = GND   -> companion lock board.""")
 
-PSU["note"] = (15, 165, """ephemerkey — Power (USB-C -> charge -> load-share -> TPS63900 3V3). PLACED, not wired. See DESIGN.md "USB-C input + Li-ion charging".
-USB-C J3 (16P): VBUS->USB_VBUS; CC1->R4, CC2->R5 (5.1k each to GND, sink/UFP); D+/D- -> U3 ESD -> STM32 PA12/PA11; SBU=NC; SHIELD->GND (or 1M||cap).
-ESD U3 USBLC6-2SC6: at the connector, on VBUS + D+ + D-.
-CHARGER U4 MCP73831-2-OT: VDD<-USB_VBUS; VBAT->BAT+; PROG via R6 4.7k = ~213mA (~0.5C of a 500mAh cell); STAT->D4 CHG LED + R8 1k. C10/C11 10uF in/out.
-LOAD-SHARE: Q1 AO3401A P-FET src=BAT+, drn=VSYS, gate->USB_VBUS via R7 100k (pulldown). D3 B5819W: USB_VBUS->VSYS. Battery feeds VSYS only when USB absent.
-BUCK-BOOST U2 TPS63900: VIN<-VSYS (1.8-5.5V ok: VBUS~4.7V or BAT 3.0-4.2V); L1 2.2uH on LX1/LX2; Cin C12, Cout C13/C14 (10uF). CFG1/2/3 strap=3.3V; EN->VIN. VOUT=+3V3. EP->GND.
-BATTERY J4 JST-PH (RA): pin1=BAT+, pin2=GND (1S Li-ion, protected pack). C15 VBUS bulk, C16 VBAT bulk (10uF).""")
+PSU["note"] = (12, 158, """Power — pinout (USB-C -> charge -> load-share -> buck-boost).  PLACED, not wired.
+J3  USB-C 16P:   VBUS -> VBUS_5V;  GND -> GND;  CC1 -> R4 5.1k -> GND;  CC2 -> R5 5.1k -> GND
+                 D+ -> U3 -> USB_DP (PA12);  D- -> U3 -> USB_DM (PA11);  SBU1/2 = NC;  SHIELD -> GND
+U3  USBLC6-2SC6:  1 I/O1(D+ conn)   2 GND   3 I/O2(D- conn)   4 I/O2(D- MCU)   5 VBUS   6 I/O1(D+ MCU)
+U4  MCP73831-2-OT (SOT-23-5):  1 STAT -> D4 + R8 1k    2 VSS -> GND    3 VBAT -> BAT+ (C11 10uF)
+                               4 VDD <- VBUS_5V (C10 10uF)   5 PROG -> R6 4.7k -> GND  (Ichg ~213mA = 0.5C/500mAh)
+Q1  AO3401A load-share:  G -> VBUS_5V & R7 100k -> GND;  S -> BAT+;  D -> VSYS.   D3 B5819W: VBUS_5V -> VSYS.
+                         => VSYS = VBUS (USB in: Q1 off, battery charges) | BAT (USB out: Q1 on)
+U2  TPS63900 (WSON-10):  1 EN -> VIN    2 SEL -> GND    3/4/5 CFG1/2/3 strap = 3.3V    6 VOUT -> +3V3
+                         7 LX2   9 LX1  (L1 2.2uH across LX1-LX2)    8 GND    10 VIN <- VSYS    11 EP -> GND
+                         C12 on VIN; C13, C14 on +3V3 (10uF).   C15 VBUS bulk; C16 VBAT bulk.
+J4  JST-PH (RA):  1 = BAT+    2 = GND    (1S Li-ion, protected pack).""")
 
-GNSS["note"] = (15, 120, """ephemerkey — GNSS (MD1 MAX-M10S-00B + AE1 W3011A). PLACED, not wired. See DESIGN.md GNSS / GPS Antenna.
-ANTENNA: AE1 W3011A feed -> pi-match -> 50ohm CPWG trace -> MD1 RF_IN(11). Rm1 series (0R populated); Cm2/Cm3 shunt pads (DNP, tune w/ VNA at bring-up). Honor 4.0x6.25mm ground keep-out under/around AE1; reserve a board corner.
-SUPPLY: VCC(8)+V_IO(7)->+3V3 (C20/C22 100nF); VCC_RF(14) via L2 ferrite + C17 100nF/C18 10pF (RF supply isolation); C19 10uF bulk on VCC. V_BCKP(6)->+3V3 always-on tap + C21 100nF (hot-start retention). GND=1,10,12.
-INTERFACE (to MCU): TXD(2)->PA10, RXD(3)<-PA9 (USART1 NMEA/UBX 9600); TIMEPULSE(4)->PA0 (1PPS); EXTINT(5)<-PA1; RESET_N(9)<-PA4 (OD). VIO_SEL(15)=open (3.3V). SDA(16)/SCL(17)=NC (UART used). SAFEBOOT_N(18)=pull per DS. LNA_EN(13)=open (passive antenna).""")
+GNSS["note"] = (12, 150, """GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.
+MD1 MAX-M10S (18-pin LCC):
+  1  GND        GND                  10  GND        GND
+  2  TXD        -> PA10 (NMEA)       11  RF_IN      <- match <- AE1
+  3  RXD        <- PA9  (NMEA)       12  GND        GND
+  4  TIMEPULSE  -> PA0 (1PPS)        13  LNA_EN     NC (passive antenna)
+  5  EXTINT     <- PA1               14  VCC_RF     L2 ferrite + C17 100nF / C18 10pF
+  6  V_BCKP     +3V3 always-on, C21  15  VIO_SEL    open = 3.3V
+  7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)
+  8  VCC        +3V3, C19 10uF/C20   17  SCL        NC
+  9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet
+ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.   Cm2/Cm3 shunt = DNP (tune w/ VNA).
+          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.""")
 
-SENSORS["note"] = (15, 95, """ephemerkey — Accelerometer (U5 LIS3DHTR, LGA-16). PLACED, not wired. See DESIGN.md Sensors / Security.
-SUPPLY: VDD(14)+VDD_IO(1)->+3V3, C23/C24 100nF each. GND(5,12)->GND. RES(10)->GND. ADC1-3(13,15,16)=NC. CS(8)->+3V3 (force I2C).
-I2C1: SCL(4)->PB6, SDA(6)->PB7; R9/R10 4.7k pull-ups to +3V3. SDO/SA0(7) strap sets addr (0x18 low / 0x19 high).
-INT: INT1(11)->PA2 (wake-on-motion), INT2(9)->PA3 (tamper/free-fall). Tamper policy may zeroize the TOTP secret (DESIGN.md Security).""")
+SENSORS["note"] = (12, 70, """Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.
+U5 LIS3DH:
+  1  VDD_IO   +3V3 (C24 100nF)        9  INT2     -> PA3 (tamper / free-fall)
+  2  NC                              10  RES      -> GND
+  3  NC                              11  INT1     -> PA2 (wake-on-motion)
+  4  SCL      -> PB6 (I2C1)          12  GND      GND
+  5  GND      GND                    13  ADC3     NC
+  6  SDA      -> PB7 (I2C1)          14  VDD      +3V3 (C23 100nF)
+  7  SDO/SA0  addr 0x18(GND)/0x19    15  ADC2     NC
+  8  CS       +3V3 (force I2C)       16  ADC1     NC
+I2C1:  R9/R10 4.7k pull-ups to +3V3.   Tamper (INT2) may zeroize the TOTP secret (DESIGN.md Security).""")
+
 
 # ============================ generate =======================================
 K.build(

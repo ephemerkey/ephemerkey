@@ -15,7 +15,7 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | Ref | Value | MPN | LCSC | Footprint |
 |-----|-------|-----|------|-----------|
 | U1 | STM32U083KCU6 | STM32U083KCU6 | C22459164 | Package_DFN_QFN:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm |
-| MD1 | MAX-M10S-00B | MAX-M10S-00B | C4153167 | RF_GPS:ublox_MAX |
+| MD1 | MAX-M10S-00B | MAX-M10S-00B | C4153167 | ephemerkey:ublox_MAX (project copy + vendored 3D model) |
 | AE1 | W3011A | W3011A | C5830926 | RF_Antenna:Pulse_W3011 |
 | U2 | TPS63900DSKR | TPS63900DSKR | C1518762 | Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm |
 | U3 | USBLC6-2SC6 | USBLC6-2SC6 | C2687116 | Package_TO_SOT_SMD:SOT-23-6 |
@@ -40,7 +40,7 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | J4 | BAT 1S (JST PH RA) | S2B-PH-K-S | C173752 | Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal |
 | J1 | SWD | Conn_ARM_SWD_TagConnect_TC2030-NL | — | Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical |
 | J2 | LOCK OUT (1x4) | header 2.54 | — | Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical |
-| SW1 | PROV/SHOW | TS-1187A-B-A-B | C318884 | Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A |
+| SW1–SW3 | USER1/2/3 (SW3=BOOT0/DFU) | TS-1187A-B-A-B | C318884 | ephemerkey:SW_Push_1P1T_XKB_TS-1187A (vendored from tsumikoro, has 3D model) |
 | D1 | LED green (status) | LTST-C281KGKT | C160479 | LED_SMD:LED_0402_1005Metric |
 | D2 / D4 | LED red (fault / charge) | NCD0402R1 | C130719 | LED_SMD:LED_0402_1005Metric |
 

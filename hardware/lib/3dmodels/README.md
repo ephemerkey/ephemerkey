@@ -2,16 +2,25 @@
 
 Most parts get their 3D model automatically from KiCad's bundled libraries
 (0402/0805 R/C/L/LED, 32.768kHz crystal, JST-PH, GCT USB4105 USB-C, SOT-23/-5/-6,
-WSON-10, LGA-16, SOD-123, 1x4 header). **Four placed parts have no model in
-KiCad** (verified against KiCad's upstream 3D repo) and should be downloaded and
-dropped here:
+WSON-10, LGA-16, SOD-123, 1x4 header).
 
-| Part | Drop file here as | Where to download (free, account required) |
-|------|-------------------|--------------------------------------------|
-| STM32U083KCU6 (UFQFPN-32) | `STM32U083KCU6.step` | ST product page → CAD Resources: https://www.st.com/en/microcontrollers-microprocessors/stm32u083kc.html · or Ultra Librarian / SnapMagic / TraceParts |
-| MAX-M10S-00B (GNSS) | `ublox_MAX-M10S.step` | SnapMagic: https://www.snapeda.com/parts/MAX-M10S-00B/u-blox/ · Component Search Engine: https://componentsearchengine.com/part-view/MAX-M10S-00B/u-blox · DigiKey models: https://www.digikey.com/en/models/15712906 |
-| W3011A (antenna) | `Pulse_W3011.step` | SnapMagic: https://www.snapeda.com/parts/W3011/PulseLarsen%20Antennas/ · Yageo (acquired Pulse) part page |
-| SW1 tactile button (XKB TS-1187A) | `XKB_TS-1187A.step` | *Cosmetic only* (render/enclosure clearance). SnapMagic / LCSC C318884 EDA model · or substitute any KiCad-modelled SMD tactile (e.g. Panasonic EVQ) |
+**Provided here** (vendored project models + a project footprint copy that points
+its `(model …)` at `${KIPRJMOD}/../lib/3dmodels/`):
+
+| Part | File | Footprint | Source |
+|------|------|-----------|--------|
+| MAX-M10S-00B (GNSS) | `ublox_MAX-M10S.step` | `ephemerkey:ublox_MAX` | u-blox MAX form-factor, fcmadwar/3D-Step-Models-Library (AP214) |
+| SW1–SW3 tactile (XKB TS-1187A) | `SW_Push_1P1T_XKB_TS-1187A.step` | `ephemerkey:SW_Push_1P1T_XKB_TS-1187A` | reused from the tsumikoro project |
+
+> Verify the MAX model's offset/rotation in the 3D viewer at layout — third-party
+> STEP origins don't always match the KiCad footprint origin.
+
+**Still to download** (no model in KiCad; every source needs a free login):
+
+| Part | Drop file here as | Where to download |
+|------|-------------------|-------------------|
+| STM32U083KCU6 (UFQFPN-32) | `STM32U083KCU6.step` | ST CAD Resources: https://www.st.com/en/microcontrollers-microprocessors/stm32u083kc.html · or Ultra Librarian / SnapMagic / TraceParts |
+| W3011A (antenna) | `Pulse_W3011.step` | SnapMagic: https://www.snapeda.com/parts/W3011/PulseLarsen%20Antennas/ · Yageo (Pulse) part page |
 
 `J1` (SWD Tag-Connect TC2030-NL) intentionally has **no** 3D model and needs none
 — it is a bare pogo-pin pad land, no component is mounted.
