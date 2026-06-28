@@ -13,9 +13,10 @@ therefore **time** and **place**, both sourced from the same u-blox GNSS module:
 - **Place** — a position fix that must lie within a configured lat/lon radius,
   with sufficient fix quality (min satellites, max HDOP).
 
-A companion analog **TOTP lock** board (separate project) consumes the emitted
-codes and drives an actuator. ephemerkey is the *generator*; the lock is the
-*consumer*. See § Code Output Interface.
+A companion **TOTP lock** board (now in this repo at `hardware/lock/` — a second
+PCB) consumes the emitted codes over an authenticated link and drives a solenoid.
+ephemerkey is the *generator*; the lock is the *consumer*. See § Code Output
+Interface.
 
 This board was ported from an Altium part-selection skeleton
 (`elec/pr/totp/totp_gps_gen`). The five anchor parts (MCU, GNSS, antenna,
@@ -219,8 +220,8 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 11 | PA5 | Button | SW1 user button 1 (internal pull-up, to GND) |
 | 12 | PA6 | LED green | in-fence / code-valid |
 | 13 | PA7 | LED red | out-of-fence / fault |
-| 14 | PB0 | LOCK_TX | USART → companion lock board |
-| 15 | PB1 | LOCK strobe | CODE_VALID open-drain (or LOCK_RX) |
+| 14 | PB0 | KEY_TX | UART TX → lock RXD (authenticated lock link) |
+| 15 | PB1 | KEY_RX | UART RX ← lock TXD (authenticated lock link) |
 | 16 | VSS_1 | GND | |
 | 17 | VDDUSB | 3V3 USB | 100nF (USB transceiver supply) |
 | 18 | PA8 | Spare / GNSS_EN | optional GNSS power-gate FET control |
@@ -231,7 +232,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 23 | PA13 | SWDIO | debug |
 | 24 | PA14 | SWCLK | debug |
 | 25 | PA15 | Button | SW2 user button 2 (internal pull-up, to GND) |
-| 26 | PB3 | Spare | |
+| 26 | PB3 | CODE_REQ | Wake companion lock (out); starts challenge-response |
 | 27 | PB4 | Spare | |
 | 28 | PB5 | Spare | |
 | 29 | PB6 | I2C1_SCL | LIS3DH (and optional GNSS DDC) |
@@ -240,7 +241,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
-**Peripheral summary:** USART1 (GNSS), USART/bit-bang (lock out), I2C1 (accel),
+**Peripheral summary:** USART1 (GNSS), UART (authenticated lock link: PB0/PB1 + CODE_REQ PB3), I2C1 (accel),
 TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning), 2×EXTI (accel),
 SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
 
@@ -255,17 +256,36 @@ SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
 
 ## Code Output Interface (to the companion lock)
 
-The generator presents the code to the analog lock board over a simple,
-opto-isolatable interface:
+The companion **lock board lives in this repo at `hardware/lock/`** (a second
+PCB; see its README). ephemerkey talks to it over a **4-wire authenticated UART**
+on J2 (1×4, opto-isolatable), straight-through to the lock's J2:
 
-- **LOCK_TX (PB0):** ASCII line UART at 9600 8N1, e.g. `CODE 482913\n`, emitted
-  only when (in-fence) ∧ (valid fix) ∧ (fresh clock) ∧ (button or armed window).
-- **CODE_VALID strobe (PB1):** open-drain, asserted while a fresh valid code is
-  available — lets a purely analog lock latch/sample without parsing UART.
-- Optional: the same code shown on a small display for manual entry.
+| J2 pin | net | dir | function |
+|--------|-----|-----|----------|
+| 1 | GND | — | common ground |
+| 2 | CODE_REQ | out (PB3) | wake the (sleeping) lock; starts a session |
+| 3 | KEY_TX | out (PB0) | UART TX → lock RXD |
+| 4 | KEY_RX | in (PB1) | UART RX ← lock TXD |
 
-The lock board's own design (actuator drive, fail-secure logic) lives in the
-companion project; this interface is the contract between them.
+**Authentication (firmware HMAC, no secure element).** A pairing secret (distinct
+from the TOTP secret) is held in flash on both boards. On an unlock request —
+(in-fence) ∧ (valid fix) ∧ (fresh clock) ∧ (button/armed) — ephemerkey runs a
+challenge-response so a spoofed strobe cannot open the lock:
+
+1. ephemerkey asserts `CODE_REQ` to wake the lock.
+2. lock → key: a random **nonce**.
+3. key → lock: `HMAC-SHA1(secret, nonce ‖ code)` (the `code` binds it to a
+   fresh in-fence TOTP).
+4. the lock recomputes, constant-time compares, and only then actuates. The
+   nonce provides anti-replay.
+
+**Firmware plan.** Both boards use **HMAC-SHA1**, reusing `smalltotp`'s existing
+HMAC-SHA1 (no extra crypto code; HMAC-SHA1 stays sound — it doesn't rely on SHA1
+collision resistance). ephemerkey adds this to its superloop: assert `CODE_REQ`,
+open the UART (PB0/PB1), receive the nonce, reply with the HMAC, return to Stop.
+The lock side (ATtiny1616 sleep/wake, peak-and-hold solenoid drive, fail-secure
+timing) is specified in `hardware/lock/README.md`. Optional: also show the code on
+the OLED for manual entry.
 
 ## Security Considerations
 

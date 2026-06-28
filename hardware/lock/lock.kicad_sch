@@ -2,15 +2,15 @@
 	(version 20260306)
 	(generator "eeschema")
 	(generator_version "10.0")
-	(uuid "e1000000-0000-4000-8000-000000000001")
+	(uuid "e1000000-0000-4000-8000-000000000002")
 	(paper "A3")
 	(title_block
-		(title "ephemerkey")
-		(date "2026-06-21")
+		(title "lock")
+		(date "2026-06-28")
 		(rev "0.1")
 		(company "EphemerKey Authors")
-		(comment 1 "GPS-geofenced TOTP (RFC 6238) generator")
-		(comment 2 "Top-level — hierarchical sheets per subsystem")
+		(comment 1 "Companion TOTP lock — authenticated 12V solenoid driver")
+		(comment 2 "ATtiny1616 (firmware HMAC); 1S Li-ion; peak-and-hold economizer")
 	)
 	(lib_symbols)
 	(sheet
@@ -19,7 +19,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "dab4768b-f7ad-4688-83df-e36868eaa6e5")
+		(uuid "34f422b3-1977-4e3e-804d-e2379fb9eb47")
 		(property "Sheetname" "MCU"
 			(at 40.64 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -35,8 +35,8 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "626131da-d268-4455-ae12-693f505af183")
-		(property "Sheetname" "PSU"
+		(uuid "83a6a464-3036-49df-8a8b-8725034e6721")
+		(property "Sheetname" "PWR"
 			(at 96.52 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
@@ -51,29 +51,13 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "07c2c28f-2612-4714-8793-1c2094812c1c")
-		(property "Sheetname" "GNSS"
+		(uuid "823eb75f-a534-4401-8293-2e4ad25e9025")
+		(property "Sheetname" "DRV"
 			(at 152.40 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
 		)
-		(property "Sheetfile" "gnss.kicad_sch"
+		(property "Sheetfile" "drv.kicad_sch"
 			(at 152.40 63.91 0)
-			(effects (font (size 1.27 1.27)) (justify left top))
-		)
-	)
-	(sheet
-		(at 208.28 40.64)
-		(size 36.00 22.00)
-		(fields_autoplaced yes)
-		(stroke (width 0.1524) (type solid))
-		(fill (color 0 0 0 0.0000))
-		(uuid "db87c1fc-f5a5-4edb-b41b-552db7c08a69")
-		(property "Sheetname" "Sensors"
-			(at 208.28 39.37 0)
-			(effects (font (size 1.27 1.27)) (justify left bottom))
-		)
-		(property "Sheetfile" "sensors.kicad_sch"
-			(at 208.28 63.91 0)
 			(effects (font (size 1.27 1.27)) (justify left top))
 		)
 	)

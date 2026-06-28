@@ -506,7 +506,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "ephemerkey.kicad_pro",
+    "filename": "lock.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -690,9 +690,9 @@
     "subpart_id_separator": 0,
     "top_level_sheets": [
       {
-        "filename": "ephemerkey.kicad_sch",
+        "filename": "lock.kicad_sch",
         "name": "",
-        "uuid": "ec65bc99-660e-415e-984b-47a2d6256a80"
+        "uuid": "e1000000-0000-4000-8000-000000000002"
       }
     ],
     "used_designators": "",
@@ -700,24 +700,20 @@
   },
   "sheets": [
     [
-      "e1000000-0000-4000-8000-000000000001",
-      "ephemerkey"
+      "e1000000-0000-4000-8000-000000000002",
+      "lock"
     ],
     [
-      "dab4768b-f7ad-4688-83df-e36868eaa6e5",
+      "34f422b3-1977-4e3e-804d-e2379fb9eb47",
       "MCU"
     ],
     [
-      "626131da-d268-4455-ae12-693f505af183",
-      "PSU"
+      "83a6a464-3036-49df-8a8b-8725034e6721",
+      "PWR"
     ],
     [
-      "07c2c28f-2612-4714-8793-1c2094812c1c",
-      "GNSS"
-    ],
-    [
-      "db87c1fc-f5a5-4edb-b41b-552db7c08a69",
-      "Sensors"
+      "823eb75f-a534-4401-8293-2e4ad25e9025",
+      "DRV"
     ]
   ],
   "text_variables": {},
