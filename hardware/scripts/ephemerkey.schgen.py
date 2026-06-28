@@ -33,7 +33,7 @@ K.register_stdlib("Transistor_FET", "Q_PMOS_GSD")
 K.register_stdlib("Switch", "SW_Push")
 K.register_stdlib("Connector", "USB_C_Receptacle_USB2.0_16P",
                   "Conn_ARM_SWD_TagConnect_TC2030-NL")
-K.register_stdlib("Connector_Generic", "Conn_01x02", "Conn_01x04")
+K.register_stdlib("Connector_Generic", "Conn_01x02", "Conn_01x03", "Conn_01x04")
 K.register_stdlib("Display_Graphic", "ER_OLEDM0.91_1x-I2C")  # 0.91" = 128x32 I2C OLED
 
 # ---- footprint shorthands ---------------------------------------------------
@@ -74,8 +74,8 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
         dict(ref="J1", lib_id="Connector:Conn_ARM_SWD_TagConnect_TC2030-NL",
              value="SWD TC2030-NL",
              fp="Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"),
-        dict(ref="J2", lib_id="Connector_Generic:Conn_01x04", value="LOCK IF (auth)",
-             fp="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"),
+        dict(ref="J2", lib_id="Connector_Generic:Conn_01x03", value="LOCK IF (auth)",
+             fp="Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"),
         dict(ref="DS1", lib_id="Display_Graphic:ER_OLEDM0.91_1x-I2C",
              value="OLED 128x32 I2C", fp="Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"),
     ],
@@ -101,6 +101,7 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
         dict(ref="D2", lib_id="Device:LED", value="RED", fp=LED0402,
              lcsc="C130719", mpn="NCD0402R1"),
         R("R3", "1k"),
+        R("R11", "4.7k"), R("R12", "4.7k"),   # lock I2C bus pull-ups -> +3V3 (master side)
     ])
 
 # ============================ PSU sheet ======================================
@@ -187,12 +188,12 @@ MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6,
   7   PA1             GNSS_EXTINT (out)          23  PA13            SWDIO (J1)
   8   PA2             ACC_INT1 (EXTI wake)       24  PA14            SWCLK (J1)
   9   PA3             ACC_INT2 (EXTI tamper)     25  PA15            BTN2 SW2 (pull-up)
- 10   PA4             GNSS_RESET_N (OD out)      26  PB3             CODE_REQ -> J2.2 (wake lock)
+ 10   PA4             GNSS_RESET_N (OD out)      26  PB3             spare
  11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             spare
  12   PA6             LED_GRN  D1 + R2 1k        28  PB5             spare
  13   PA7             LED_RED  D2 + R3 1k        29  PB6             I2C1_SCL -> U5
- 14   PB0             KEY_TX  -> J2.3 (lock RXD)  30  PB7             I2C1_SDA -> U5
- 15   PB1             KEY_RX  <- J2.4 (lock TXD)  31  PF3/BOOT0       BTN3 SW3 + DFU
+ 14   PB0             LOCK_SDA <> J2.3 (I2C R11)  30  PB7             I2C1_SDA -> U5
+ 15   PB1             LOCK_SCL -> J2.2 (I2C R12)  31  PF3/BOOT0       BTN3 SW3 + DFU
  16   VSS             GND                        32  VSS  / EP       GND
 RTC:  Y1 32.768kHz across PC14/PC15; C1,C2 12pF load caps (match to Y1 CL; trim via RTC SMOOTHCALIB).
 PWR:  +3V3 from PSU sheet, C6 10uF bulk.   J1 = SWD TC2030-NL: SWDIO, SWCLK, NRST, +3V3, GND.
@@ -200,10 +201,11 @@ BTN:  3 user buttons. SW1->PA5, SW2->PA15 active-low (MCU pull-ups, to GND).
       SW3->PF3/BOOT0 active-HIGH to +3V3 (R1 10k pulldown = default boot-from-flash).
       Hold SW3 at reset (NRST via J1 / power cycle) -> ROM bootloader -> USB DFU over USB-C
       (STM32U0 supports USB DFU, AN2606; crystal-less USB via HSI48+CRS).
-J2 LOCK IF (1x4, AUTHENTICATED UART to companion lock board = hardware/lock):  1 = GND   2 = CODE_REQ (wake, out)
-      3 = KEY_TX -> lock RXD   4 = KEY_RX <- lock TXD.   AUTH = HMAC-SHA1 (reuse smalltotp), shared secret in
-      flash on BOTH boards: key wakes lock (CODE_REQ) -> lock returns a random nonce -> key sends HMAC(secret, nonce
-      [|| code]) -> lock recomputes & compares constant-time -> actuate. Anti-replay via the nonce. (PB0/PB1 = UART.)
+J2 LOCK IF (1x3, AUTHENTICATED I2C; ephemerkey = MASTER, lock = TARGET; = hardware/lock):  1 = GND  2 = LOCK_SCL  3 = LOCK_SDA.
+      No discrete wake/"button" line -- the lock wakes from power-down on the SCL START (wake-on-I2C); master sends a
+      dummy/wake xfer then retries.  I2C pull-ups R11/R12 4.7k -> +3V3 on THIS (master) board (lock is at VBAT, so
+      master-side 3V3 pull-ups avoid the 3V3/VBAT cross-domain).  AUTH = HMAC-SHA1 (reuse smalltotp), secret in flash
+      both boards: master READS nonce from lock -> master WRITES HMAC(secret, nonce[||code]) -> lock compares CT -> actuate.
 DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)  4 = SDA (PB7).
       Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
 

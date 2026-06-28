@@ -2,10 +2,10 @@
 	(version 20260306)
 	(generator "eeschema")
 	(generator_version "10.0")
-	(uuid "34f422b3-1977-4e3e-804d-e2379fb9eb47")
+	(uuid "5e503e8f-d827-48b6-ba4b-345d3c9420b5")
 	(paper "A3")
 	(title_block
-		(title "lock — Controller (ATtiny1616) / firmware-HMAC auth / authenticated UART")
+		(title "lock — Controller (ATtiny1616) / firmware-HMAC auth / authenticated I2C (target)")
 		(date "2026-06-28")
 		(rev "0.1")
 		(company "EphemerKey Authors")
@@ -481,222 +481,6 @@
 					)
 				)
 				(number "21"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-		)
-		(embedded_fonts no)
-	)
-	(symbol "Connector_Generic:Conn_01x04"
-		(pin_names
-			(offset 1.016)
-			(hide yes)
-		)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(duplicate_pin_numbers_are_jumpers no)
-		(property "Reference" "J"
-			(at 0 5.08 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "Conn_01x04"
-			(at 0 -7.62 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Generic connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "ki_keywords" "connector"
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "ki_fp_filters" "Connector*:*_1x??_*"
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(symbol "Conn_01x04_1_1"
-			(rectangle
-				(start -1.27 3.81)
-				(end 1.27 -6.35)
-				(stroke
-					(width 0.254)
-					(type default)
-				)
-				(fill
-					(type background)
-				)
-			)
-			(rectangle
-				(start -1.27 2.667)
-				(end 0 2.413)
-				(stroke
-					(width 0.1524)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(rectangle
-				(start -1.27 0.127)
-				(end 0 -0.127)
-				(stroke
-					(width 0.1524)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(rectangle
-				(start -1.27 -2.413)
-				(end 0 -2.667)
-				(stroke
-					(width 0.1524)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(rectangle
-				(start -1.27 -4.953)
-				(end 0 -5.207)
-				(stroke
-					(width 0.1524)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(pin passive line
-				(at -5.08 2.54 0)
-				(length 3.81)
-				(name "Pin_1"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "1"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -5.08 0 0)
-				(length 3.81)
-				(name "Pin_2"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "2"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -5.08 -2.54 0)
-				(length 3.81)
-				(name "Pin_3"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "3"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -5.08 -5.08 0)
-				(length 3.81)
-				(name "Pin_4"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "4"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -1399,7 +1183,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "87cc54db-be0e-4f8c-85c2-67f3d27a13e8")
+		(uuid "2ea992ea-77d6-48e3-bc25-5186b67937d4")
 		(property "Reference" "U1"
 			(at 49.5300 53.3400 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1428,30 +1212,30 @@
 			(at 45.7200 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "d739f044-a678-4244-9768-1d9ee854727a"))
-		(pin "2" (uuid "f85cc19e-3112-4eba-bc7d-0035849dc607"))
-		(pin "3" (uuid "7f3bb671-308a-4755-b50a-76e578c62426"))
-		(pin "4" (uuid "b4ddc625-3496-4490-93f5-b68ede666d18"))
-		(pin "5" (uuid "647ddaad-c867-4f7d-a9fa-0ad74ad1b978"))
-		(pin "6" (uuid "c4a3c7b2-749e-4a14-a835-3753f5797cc7"))
-		(pin "7" (uuid "71da0f52-74aa-47f5-8ef7-8976ea90caab"))
-		(pin "8" (uuid "197395bd-3dd6-4be9-8d93-120d784c60a0"))
-		(pin "9" (uuid "b2387288-b8be-4269-ac02-8a2ede412d18"))
-		(pin "10" (uuid "0e540283-4a12-4b0a-8153-468eadeee0c0"))
-		(pin "11" (uuid "2cbb6455-27dd-48bf-9443-9148878d2e5f"))
-		(pin "12" (uuid "16784049-3699-4f7f-9142-a7815372a479"))
-		(pin "13" (uuid "99a5aee5-3834-4c5b-b098-512067249b88"))
-		(pin "14" (uuid "caa86923-a2b7-402f-abe2-133c4b32da10"))
-		(pin "15" (uuid "046d98e0-0369-4d76-a0b8-028d5a21bc07"))
-		(pin "16" (uuid "8bf98cdf-50b5-44eb-8420-1d20a91435c4"))
-		(pin "17" (uuid "bae50f2a-ea7b-4932-9c5b-bd12a36bb28f"))
-		(pin "18" (uuid "aa484a19-865c-487c-82e0-8a9067aa3f71"))
-		(pin "19" (uuid "0a0a9fe4-dad7-422e-bf1c-9b9a56f05bed"))
-		(pin "20" (uuid "9b3297b2-551a-4567-9b3b-4627a6a8910d"))
-		(pin "21" (uuid "aadef6b6-228f-4203-a02f-779990b8556b"))
+		(pin "1" (uuid "e14b98f5-19a0-4263-a0ea-9d6a7258ff60"))
+		(pin "2" (uuid "d4accf21-edb5-401a-b0a9-1a8bd61e7402"))
+		(pin "3" (uuid "0e745f3f-e1f9-44c6-b93f-2e7e0c79a068"))
+		(pin "4" (uuid "932c06d2-7744-4ac1-8d17-a03f444ada5b"))
+		(pin "5" (uuid "416b5b38-5ba3-4fe2-9ae9-1417fe52c141"))
+		(pin "6" (uuid "4e5a8c30-b1ad-4595-80e3-ef6d38db5b8d"))
+		(pin "7" (uuid "c1d185de-e9af-4898-8693-480325357714"))
+		(pin "8" (uuid "b2c43cbc-64c0-4b8c-92e0-b5894e8b040a"))
+		(pin "9" (uuid "a4eace15-7d98-442b-b961-91cbd634aa29"))
+		(pin "10" (uuid "6b3ac1da-3af3-409c-b7bf-6e0d1f9959e9"))
+		(pin "11" (uuid "7c78aaec-14ef-4cbb-b1a4-42044c36deef"))
+		(pin "12" (uuid "50f57616-b8f6-4a10-add5-01000d583a6b"))
+		(pin "13" (uuid "63cf379c-f828-486a-9de6-cb42cad6d5ae"))
+		(pin "14" (uuid "46b014e5-972b-4353-b9ea-f1db77ac15e2"))
+		(pin "15" (uuid "4eb515f2-549e-483a-85ec-6eb382feae85"))
+		(pin "16" (uuid "7494ddc7-7d91-4aaa-a539-dd2c1cdf26d3"))
+		(pin "17" (uuid "1184ea19-85d3-4e96-9323-3e2616321373"))
+		(pin "18" (uuid "8001e226-3252-442d-ab0a-73d127c31d65"))
+		(pin "19" (uuid "f81d4a01-e201-4ba7-8375-dbab40a3f2c9"))
+		(pin "20" (uuid "2d64c736-dc5b-4bee-b34b-2d69d273370c"))
+		(pin "21" (uuid "0a79314d-e788-495c-9d19-5fd2a1af5695"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "U1")
 					(unit 1)
 				)
@@ -1459,23 +1243,23 @@
 		)
 	)
 	(symbol
-		(lib_id "Connector_Generic:Conn_01x04")
+		(lib_id "Connector_Generic:Conn_01x03")
 		(at 142.2400 55.8800 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "0bdfd8e8-c3a8-4faf-9df1-40a003d31c36")
+		(uuid "e1a4d33d-241c-49a8-9847-5fb3d4375e53")
 		(property "Reference" "J2"
 			(at 146.0500 53.3400 0)
 			(effects (font (size 1.27 1.27)) (justify left))
 		)
-		(property "Value" "DIGITAL IF (auth)"
+		(property "Value" "I2C IF (auth)"
 			(at 146.0500 58.4200 0)
 			(effects (font (size 1.27 1.27)) (justify left))
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
 			(at 142.2400 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
@@ -1483,13 +1267,12 @@
 			(at 142.2400 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "1761e44e-9918-41da-90c4-26fcb488733a"))
-		(pin "2" (uuid "e7ae440e-7b16-434f-a7d5-493b5c3cb5ff"))
-		(pin "3" (uuid "8ce32119-99b2-4f18-8209-53b160edb39a"))
-		(pin "4" (uuid "c3e68219-052d-403f-ac1b-18402d358edb"))
+		(pin "1" (uuid "b5cd03b0-9753-4f67-addd-b65621c182f7"))
+		(pin "2" (uuid "2192fad4-a82a-4d4d-8a91-9cd57b8d6553"))
+		(pin "3" (uuid "e715e94e-7723-4e68-b788-c167243add07"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "J2")
 					(unit 1)
 				)
@@ -1504,7 +1287,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "bc897f6b-25d5-4e6e-ba20-aa563b9bba02")
+		(uuid "5ae48247-c511-474c-b43c-d1d7093d6045")
 		(property "Reference" "J4"
 			(at 242.5700 53.3400 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1521,12 +1304,12 @@
 			(at 238.7600 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "834cc688-cf6f-4004-ba7f-79648ae17fe5"))
-		(pin "2" (uuid "91731828-7264-4f15-9bcc-6571cf2e6406"))
-		(pin "3" (uuid "2c4fc8bb-c172-45a7-9c0f-20234ae95a9c"))
+		(pin "1" (uuid "2e61ce8f-c0df-48fb-aa08-23db480746f7"))
+		(pin "2" (uuid "f0e6afbf-c8ef-47c3-9b4e-8afd38c09cff"))
+		(pin "3" (uuid "a544fd2c-78c7-478f-9b5e-ed40f32d2a82"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "J4")
 					(unit 1)
 				)
@@ -1541,7 +1324,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "2bb184fd-d1ae-4c76-8bf5-af38a43b017c")
+		(uuid "c197a1df-4df9-4991-a412-6e998e95f05a")
 		(property "Reference" "C1"
 			(at 34.2900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1562,11 +1345,11 @@
 			(at 30.4800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "5ad33e4b-ac25-47b0-a9e5-5b7c78caedd1"))
-		(pin "2" (uuid "ee68ecb7-2f1a-433c-bde8-28e3cae36a97"))
+		(pin "1" (uuid "c3276113-b9b4-4050-ac05-797675139193"))
+		(pin "2" (uuid "3cd5eb64-7ca6-487b-b028-6e4e67ec0dca"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "C1")
 					(unit 1)
 				)
@@ -1581,7 +1364,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "2d8174cd-b378-4979-9072-2c738f4586b0")
+		(uuid "aeb16178-2186-4b9e-9e61-c679689c1f0d")
 		(property "Reference" "C2"
 			(at 72.3900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1602,11 +1385,11 @@
 			(at 68.5800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "61b9c2d0-e6ce-4956-9faf-069bc38e8de1"))
-		(pin "2" (uuid "6da1a7e6-9429-47ad-a0d1-183ba6fa7a03"))
+		(pin "1" (uuid "fb9d7a4c-6419-41af-a4aa-c9ee3507b23c"))
+		(pin "2" (uuid "c41ef727-edf1-43ee-a460-b6d3223f7699"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "C2")
 					(unit 1)
 				)
@@ -1621,7 +1404,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "2887e9df-51e3-49c9-8eb5-32cb2bd8ca29")
+		(uuid "3c5cf895-1855-4cec-b6c9-b8254993ea68")
 		(property "Reference" "D1"
 			(at 110.4900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1650,11 +1433,11 @@
 			(at 106.6800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "08639e28-8e4f-4c95-9256-21b930623cc7"))
-		(pin "2" (uuid "c0f290a6-8d57-4ce5-906f-22ffdef662d6"))
+		(pin "1" (uuid "cd67832b-2727-4923-ab59-6db60f63cd12"))
+		(pin "2" (uuid "37f8ab08-b1a2-4ccf-a7f8-e223ba499f07"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "D1")
 					(unit 1)
 				)
@@ -1669,7 +1452,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "769ba040-9021-43fe-8a16-df80f3586f59")
+		(uuid "2d2a8265-cea4-41e8-babd-99731826f936")
 		(property "Reference" "R1"
 			(at 148.5900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1690,22 +1473,22 @@
 			(at 144.7800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "62e162d6-c513-4dff-9c7e-54c075106cdb"))
-		(pin "2" (uuid "6841433b-ca97-42b6-9d78-28d590561764"))
+		(pin "1" (uuid "46dc8245-fae3-402b-ae75-3b32368c3e38"))
+		(pin "2" (uuid "36c2ca91-fc7b-4021-87dd-1c57420268ea"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/34f422b3-1977-4e3e-804d-e2379fb9eb47"
+				(path "/e1000000-0000-4000-8000-000000000002/5e503e8f-d827-48b6-ba4b-345d3c9420b5"
 					(reference "R1")
 					(unit 1)
 				)
 			)
 		)
 	)
-	(text "Controller — ATtiny1616 (QFN-20) + firmware HMAC authentication + authenticated UART.  PLACED, not wired.\nU1 ATtiny1616 (runs DIRECT off BAT 1.8-5.5V -- NO LDO; ~0.1uA power-down):\n  pin fn               net                       pin fn        net\n   4  VCC              BAT+  (C1 100nF, C2 1uF)    3  GND       GND   (+ EP pin 21 -> GND)\n  19  PA0/RESET        UPDI -> J4 (program)        5  PA4       CODE_REQ/WAKE <- J2.2 (pin-int wake)\n  11  PB3 USART0 RXD   <- J2.3 (from key TX)       6  PA5 TCB0 WO  SOL_PWM -> DRV Q1 gate\n  12  PB2 USART0 TXD   -> J2.4 (to key RX)         7  PA6       SOL_BOOST_EN -> PWR U2.EN\n   2  PA3              STATUS LED D1 + R1 1k      ..  spare     PA1,PA2,PA7,PB0,PB1,PB4,PB5,PC0..PC3\nAUTHENTICATION (firmware HMAC on U1 -- NO secure element): a shared secret in ATtiny flash backs an\n  HMAC-SHA1 challenge-response over the UART (J2): lock sends a random nonce; key returns\n  HMAC(secret, nonce); lock recomputes and compares constant-time. Anti-replay via the nonce.\n  HMAC-SHA1 reuses smalltotp on BOTH boards and fits easily in 16KB flash / 2KB SRAM (HMAC-SHA1 stays\n  sound -- it does not rely on SHA1 collision resistance). Protect the secret: disable UPDI / set lockbits\n  in production so flash cannot be read back. (Drop-in upgrade path: an I2C ATECC608 on PB0/PB1 if wanted.)\nJ2 DIGITAL INTERFACE (authenticated, to ephemerkey) 1x4: 1 GND  2 CODE_REQ(wake)  3 RXD(<-key TX)  4 TXD(->key RX).\n  Key drives this at 3V3; BAT-powered ATtiny inputs accept it (VIH ~0.7*VBAT).  Opto-isolate J2 if desired.\nJ4 UPDI PROGRAM 1x3: 1 UPDI (PA0)  2 VCC (BAT)  3 GND.  1-wire UPDI: pymcuprog / megaTinyCore / Atmel-ICE / Serial-UPDI.\nSLEEP: U1 power-down ~0.1uA; CODE_REQ pin-interrupt wakes it -> authenticate -> boost on -> drive -> sleep."
+	(text "Controller — ATtiny1616 (QFN-20) + firmware HMAC auth + I2C target (ephemerkey = master; wake-on-I2C).  PLACED, not wired.\nU1 ATtiny1616 (runs DIRECT off BAT 1.8-5.5V -- NO LDO; ~0.1uA power-down):\n  pin fn               net                       pin fn        net\n   4  VCC              BAT+  (C1 100nF, C2 1uF)    3  GND       GND   (+ EP pin 21 -> GND)\n  19  PA0/RESET        UPDI -> J4 (program)        5  PA4       spare\n  14  PB0 TWI0 SCL     <- J2.2 (I2C clk + WAKE)    6  PA5 TCB0 WO  SOL_PWM -> DRV Q1 gate\n  13  PB1 TWI0 SDA     <> J2.3 (I2C data)          7  PA6       SOL_BOOST_EN -> PWR U2.EN\n   2  PA3              STATUS LED D1 + R1 1k      ..  spare     PA1,PA2,PA4,PA7,PB2,PB3,PB4,PB5,PC0..PC3\nI2C: lock = TARGET (addr 0x60); ephemerkey = MASTER (\"ephemerkey drives\"). Bus pull-ups are on the MASTER side\n  at +3V3 (NOT on the lock) -- the lock runs at VBAT and its TWI pins are open-drain / sink-only, so master-side\n  3V3 pull-ups avoid the 3V3/VBAT cross-domain (target reads a 3V3 high fine: VIH ~0.7*VBAT). Short cable, ~100kHz.\nWAKE-ON-I2C (NO discrete wake / \"button\" line): in power-down the lock arms a pin-change interrupt on SCL (PB0);\n  the master's first START wakes it -> firmware disables the pin-int and enables TWI0 as target. The just-woken\n  target NACKs the very first address, so the master sends a dummy/wake xfer then retries (or clock-stretches).\nAUTHENTICATION (firmware HMAC on U1 -- NO secure element): a shared secret in ATtiny flash backs an\n  HMAC-SHA1 challenge-response over I2C (J2): master READS a fresh random nonce from the lock, then WRITES\n  HMAC(secret, nonce[||code]); lock recomputes and compares constant-time. Anti-replay via the nonce.\n  HMAC-SHA1 reuses smalltotp on BOTH boards and fits easily in 16KB flash / 2KB SRAM (HMAC-SHA1 stays\n  sound -- it does not rely on SHA1 collision resistance). Protect the secret: disable UPDI / set lockbits\n  in production so flash cannot be read back.\nJ2 I2C INTERFACE (authenticated, to ephemerkey master) 1x3: 1 GND  2 SCL (+ wake)  3 SDA.   (No discrete wake line.)\nJ4 UPDI PROGRAM 1x3: 1 UPDI (PA0)  2 VCC (BAT)  3 GND.  1-wire UPDI: pymcuprog / megaTinyCore / Atmel-ICE / Serial-UPDI.\nSLEEP: U1 power-down ~0.1uA; SCL START (pin-int on PB0) wakes it -> TWI target on -> authenticate -> boost on -> drive -> sleep."
 		(exclude_from_sim no)
 		(at 12.00 140.00 0)
 		(effects (font (size 1.5 1.5)) (justify left top))
-		(uuid "0e7e084d-8806-430f-9af0-2a7186445acd")
+		(uuid "d8162fe1-b612-4556-9234-726f1290b2fe")
 	)
 	(sheet_instances
 		(path "/"

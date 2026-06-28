@@ -220,8 +220,8 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 11 | PA5 | Button | SW1 user button 1 (internal pull-up, to GND) |
 | 12 | PA6 | LED green | in-fence / code-valid |
 | 13 | PA7 | LED red | out-of-fence / fault |
-| 14 | PB0 | KEY_TX | UART TX → lock RXD (authenticated lock link) |
-| 15 | PB1 | KEY_RX | UART RX ← lock TXD (authenticated lock link) |
+| 14 | PB0 | LOCK_SDA | I2C SDA ↔ lock (authenticated link; ephemerkey = master) |
+| 15 | PB1 | LOCK_SCL | I2C SCL → lock (authenticated link; ephemerkey = master) |
 | 16 | VSS_1 | GND | |
 | 17 | VDDUSB | 3V3 USB | 100nF (USB transceiver supply) |
 | 18 | PA8 | Spare / GNSS_EN | optional GNSS power-gate FET control |
@@ -232,7 +232,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 23 | PA13 | SWDIO | debug |
 | 24 | PA14 | SWCLK | debug |
 | 25 | PA15 | Button | SW2 user button 2 (internal pull-up, to GND) |
-| 26 | PB3 | CODE_REQ | Wake companion lock (out); starts challenge-response |
+| 26 | PB3 | Spare | |
 | 27 | PB4 | Spare | |
 | 28 | PB5 | Spare | |
 | 29 | PB6 | I2C1_SCL | LIS3DH (and optional GNSS DDC) |
@@ -241,7 +241,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
-**Peripheral summary:** USART1 (GNSS), UART (authenticated lock link: PB0/PB1 + CODE_REQ PB3), I2C1 (accel),
+**Peripheral summary:** USART1 (GNSS), I2C (master, authenticated lock link: PB0/PB1, wake-on-I2C), I2C1 (accel),
 TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning), 2×EXTI (accel),
 SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
 
@@ -257,32 +257,41 @@ SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
 ## Code Output Interface (to the companion lock)
 
 The companion **lock board lives in this repo at `hardware/lock/`** (a second
-PCB; see its README). ephemerkey talks to it over a **4-wire authenticated UART**
-on J2 (1×4, opto-isolatable), straight-through to the lock's J2:
+PCB; see its README). ephemerkey talks to it over a **3-wire authenticated I2C**
+bus — **ephemerkey is the master** — on J2 (1×3, opto-isolatable), straight-through
+to the lock's J2:
 
 | J2 pin | net | dir | function |
 |--------|-----|-----|----------|
 | 1 | GND | — | common ground |
-| 2 | CODE_REQ | out (PB3) | wake the (sleeping) lock; starts a session |
-| 3 | KEY_TX | out (PB0) | UART TX → lock RXD |
-| 4 | KEY_RX | in (PB1) | UART RX ← lock TXD |
+| 2 | LOCK_SCL | out (PB1) | I2C clock — ephemerkey is master; also the lock's wake edge |
+| 3 | LOCK_SDA | bidir (PB0) | I2C data |
+
+There is **no separate wake/trigger line** — the lock sleeps in power-down and
+wakes on the first I2C START (a pin-change interrupt on SCL), so we don't mix a
+discrete "button"-style input onto the bus. The master sends a dummy/wake transfer,
+then retries once the target is up.
+
+The I2C pull-ups (≈4.7 kΩ, R11/R12) sit on **this** board to +3V3 (master side) so
+the bus idles at 3.3 V; the lock's BAT-powered (≤4.2 V) open-drain target pins only
+sink, so there is no 3.3 V/VBAT cross-domain conflict. Keep the cable short (100 kHz).
 
 **Authentication (firmware HMAC, no secure element).** A pairing secret (distinct
 from the TOTP secret) is held in flash on both boards. On an unlock request —
 (in-fence) ∧ (valid fix) ∧ (fresh clock) ∧ (button/armed) — ephemerkey runs a
 challenge-response so a spoofed strobe cannot open the lock:
 
-1. ephemerkey asserts `CODE_REQ` to wake the lock.
-2. lock → key: a random **nonce**.
-3. key → lock: `HMAC-SHA1(secret, nonce ‖ code)` (the `code` binds it to a
-   fresh in-fence TOTP).
-4. the lock recomputes, constant-time compares, and only then actuates. The
+1. ephemerkey starts an I2C transaction; the first START wakes the lock
+   (wake-on-I2C), and ephemerkey **reads** a random **nonce** from it.
+2. ephemerkey **writes** `HMAC-SHA1(secret, nonce ‖ code)` to the lock (the `code`
+   binds it to a fresh in-fence TOTP).
+3. the lock recomputes, constant-time compares, and only then actuates. The
    nonce provides anti-replay.
 
 **Firmware plan.** Both boards use **HMAC-SHA1**, reusing `smalltotp`'s existing
 HMAC-SHA1 (no extra crypto code; HMAC-SHA1 stays sound — it doesn't rely on SHA1
-collision resistance). ephemerkey adds this to its superloop: assert `CODE_REQ`,
-open the UART (PB0/PB1), receive the nonce, reply with the HMAC, return to Stop.
+collision resistance). ephemerkey adds this to its superloop: drive I2C as master (PB0/PB1) — the first
+START wakes the lock — to read the nonce and write the HMAC, then return to Stop.
 The lock side (ATtiny1616 sleep/wake, peak-and-hold solenoid drive, fail-secure
 timing) is specified in `hardware/lock/README.md`. Optional: also show the code on
 the OLED for manual entry.

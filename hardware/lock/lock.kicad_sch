@@ -19,7 +19,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "34f422b3-1977-4e3e-804d-e2379fb9eb47")
+		(uuid "5e503e8f-d827-48b6-ba4b-345d3c9420b5")
 		(property "Sheetname" "MCU"
 			(at 40.64 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -35,7 +35,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "83a6a464-3036-49df-8a8b-8725034e6721")
+		(uuid "93559584-6df4-4ea3-bcbc-16466d18e9f1")
 		(property "Sheetname" "PWR"
 			(at 96.52 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))
@@ -51,7 +51,7 @@
 		(fields_autoplaced yes)
 		(stroke (width 0.1524) (type solid))
 		(fill (color 0 0 0 0.0000))
-		(uuid "823eb75f-a534-4401-8293-2e4ad25e9025")
+		(uuid "f8e32f90-eb93-447b-b3a2-ef0223f6c0d2")
 		(property "Sheetname" "DRV"
 			(at 152.40 39.37 0)
 			(effects (font (size 1.27 1.27)) (justify left bottom))

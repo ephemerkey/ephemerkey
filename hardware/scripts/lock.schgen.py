@@ -8,21 +8,21 @@ it shares this repo's engine (scripts/kschgen.py), Makefile, and lib tables, the
 same way reefvolt-sensorbuddy carries both sensorbuddy and plugcontrol.
 
 The lock is the *consumer* half of the ephemerkey system: it receives an emitted
-TOTP/unlock request over an AUTHENTICATED digital UART, verifies it with a
-firmware HMAC challenge-response (shared secret in MCU flash -- no secure
-element), and drives a 12 V solenoid with a firmware peak-and-hold (economizer)
-profile from a single 1S Li-ion cell.
+TOTP/unlock request over an AUTHENTICATED I2C link (ephemerkey is the master,
+this lock is the target), verifies it with a firmware HMAC challenge-response
+(shared secret in MCU flash -- no secure element), and drives a 12 V solenoid
+with a firmware peak-and-hold (economizer) profile from a single 1S Li-ion cell.
 
 Power architecture (chosen for "off most of the time, draw as little as
 possible"):
   - The ATtiny1616 controller runs DIRECTLY off the cell (1.8-5.5 V) -- NO LDO.
-    It sleeps at ~0.1 uA in power-down and wakes on the CODE_REQ line.
+    It sleeps at ~0.1 uA in power-down and wakes on I2C bus activity (first START).
   - A MT3608 boost makes +12 V (VSOL) but is GATED OFF (SOL_BOOST_EN) except
     during an actuation, so there is no standing 12 V draw or switching noise.
   - A low-side AO3400A + SS34 flyback switches the coil; firmware does
     peak (~full duty, ~20-50 ms) then hold (reduced PWM duty) -- the economizer.
 
-Authentication is firmware HMAC-SHA1 challenge-response over the UART (reuse
+Authentication is firmware HMAC-SHA1 challenge-response over I2C (reuse
 smalltotp's HMAC-SHA1 on both boards); the secret lives in ATtiny flash (protect
 it with UPDI lockbits in production).
 
@@ -82,16 +82,16 @@ def C(ref, val, fp=C0402, **kw):
 
 # ============================ MCU sheet ======================================
 # ATtiny1616 (runs direct off BAT, no LDO) + firmware HMAC auth over an
-# authenticated UART + UPDI programming header.
+# authenticated I2C target bus (ephemerkey = master) + UPDI programming header.
 MCU = dict(name="MCU", file="mcu.kicad_sch",
-    title="Controller (ATtiny1616) / firmware-HMAC auth / authenticated UART",
+    title="Controller (ATtiny1616) / firmware-HMAC auth / authenticated I2C (target)",
     page="2",
     big=[
         dict(ref="U1", lib_id="MCU_Microchip_ATtiny:ATtiny1616-M",
              value="ATtiny1616", fp=QFN20, lcsc="C507118",
              mpn="ATTINY1616-MNR", mfr="Microchip"),
-        dict(ref="J2", lib_id="Connector_Generic:Conn_01x04",
-             value="DIGITAL IF (auth)", fp=HDR4),
+        dict(ref="J2", lib_id="Connector_Generic:Conn_01x03",
+             value="I2C IF (auth)", fp=HDR3),
         dict(ref="J4", lib_id="Connector_Generic:Conn_01x03",
              value="UPDI PROG", fp=HDR3),
     ],
@@ -149,24 +149,29 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
     ])
 
 # ============================ wiring notes (pinout guides) ====================
-MCU["note"] = (12, 140, """Controller — ATtiny1616 (QFN-20) + firmware HMAC authentication + authenticated UART.  PLACED, not wired.
+MCU["note"] = (12, 140, """Controller — ATtiny1616 (QFN-20) + firmware HMAC auth + I2C target (ephemerkey = master; wake-on-I2C).  PLACED, not wired.
 U1 ATtiny1616 (runs DIRECT off BAT 1.8-5.5V -- NO LDO; ~0.1uA power-down):
   pin fn               net                       pin fn        net
    4  VCC              BAT+  (C1 100nF, C2 1uF)    3  GND       GND   (+ EP pin 21 -> GND)
-  19  PA0/RESET        UPDI -> J4 (program)        5  PA4       CODE_REQ/WAKE <- J2.2 (pin-int wake)
-  11  PB3 USART0 RXD   <- J2.3 (from key TX)       6  PA5 TCB0 WO  SOL_PWM -> DRV Q1 gate
-  12  PB2 USART0 TXD   -> J2.4 (to key RX)         7  PA6       SOL_BOOST_EN -> PWR U2.EN
-   2  PA3              STATUS LED D1 + R1 1k      ..  spare     PA1,PA2,PA7,PB0,PB1,PB4,PB5,PC0..PC3
+  19  PA0/RESET        UPDI -> J4 (program)        5  PA4       spare
+  14  PB0 TWI0 SCL     <- J2.2 (I2C clk + WAKE)    6  PA5 TCB0 WO  SOL_PWM -> DRV Q1 gate
+  13  PB1 TWI0 SDA     <> J2.3 (I2C data)          7  PA6       SOL_BOOST_EN -> PWR U2.EN
+   2  PA3              STATUS LED D1 + R1 1k      ..  spare     PA1,PA2,PA4,PA7,PB2,PB3,PB4,PB5,PC0..PC3
+I2C: lock = TARGET (addr 0x60); ephemerkey = MASTER ("ephemerkey drives"). Bus pull-ups are on the MASTER side
+  at +3V3 (NOT on the lock) -- the lock runs at VBAT and its TWI pins are open-drain / sink-only, so master-side
+  3V3 pull-ups avoid the 3V3/VBAT cross-domain (target reads a 3V3 high fine: VIH ~0.7*VBAT). Short cable, ~100kHz.
+WAKE-ON-I2C (NO discrete wake / "button" line): in power-down the lock arms a pin-change interrupt on SCL (PB0);
+  the master's first START wakes it -> firmware disables the pin-int and enables TWI0 as target. The just-woken
+  target NACKs the very first address, so the master sends a dummy/wake xfer then retries (or clock-stretches).
 AUTHENTICATION (firmware HMAC on U1 -- NO secure element): a shared secret in ATtiny flash backs an
-  HMAC-SHA1 challenge-response over the UART (J2): lock sends a random nonce; key returns
-  HMAC(secret, nonce); lock recomputes and compares constant-time. Anti-replay via the nonce.
+  HMAC-SHA1 challenge-response over I2C (J2): master READS a fresh random nonce from the lock, then WRITES
+  HMAC(secret, nonce[||code]); lock recomputes and compares constant-time. Anti-replay via the nonce.
   HMAC-SHA1 reuses smalltotp on BOTH boards and fits easily in 16KB flash / 2KB SRAM (HMAC-SHA1 stays
   sound -- it does not rely on SHA1 collision resistance). Protect the secret: disable UPDI / set lockbits
-  in production so flash cannot be read back. (Drop-in upgrade path: an I2C ATECC608 on PB0/PB1 if wanted.)
-J2 DIGITAL INTERFACE (authenticated, to ephemerkey) 1x4: 1 GND  2 CODE_REQ(wake)  3 RXD(<-key TX)  4 TXD(->key RX).
-  Key drives this at 3V3; BAT-powered ATtiny inputs accept it (VIH ~0.7*VBAT).  Opto-isolate J2 if desired.
+  in production so flash cannot be read back.
+J2 I2C INTERFACE (authenticated, to ephemerkey master) 1x3: 1 GND  2 SCL (+ wake)  3 SDA.   (No discrete wake line.)
 J4 UPDI PROGRAM 1x3: 1 UPDI (PA0)  2 VCC (BAT)  3 GND.  1-wire UPDI: pymcuprog / megaTinyCore / Atmel-ICE / Serial-UPDI.
-SLEEP: U1 power-down ~0.1uA; CODE_REQ pin-interrupt wakes it -> authenticate -> boost on -> drive -> sleep.""")
+SLEEP: U1 power-down ~0.1uA; SCL START (pin-int on PB0) wakes it -> TWI target on -> authenticate -> boost on -> drive -> sleep.""")
 
 PWR["note"] = (12, 120, """Power — BAT 1S Li-ion -> MT3608 boost -> +12V (VSOL).  Boost GATED OFF except during actuation.  PLACED, not wired.
 J1 BAT 1S (JST-PH): 1 = BAT+   2 = GND   (protected 1S Li-ion pack, 3.0-4.2V).

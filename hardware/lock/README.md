@@ -20,8 +20,8 @@ on-canvas note that is the wiring spec for the eeschema phase. Regenerate
 ## What it does
 
 1. Sleeps at ~0.1 µA (ATtiny1616 power-down). Coil de-energized, 12 V rail off.
-2. ephemerkey asserts `CODE_REQ` → pin-interrupt wakes the MCU.
-3. **Authenticated** challenge-response over the UART proves the request is
+2. ephemerkey starts an I2C transaction; the first START wakes the MCU (wake-on-I2C).
+3. **Authenticated** challenge-response over I2C proves the request is
    genuine (HMAC-SHA1, shared secret in flash — see *Firmware plan*).
 4. On success: enable the boost, run the **peak-and-hold** solenoid profile,
    then drop the rail and go back to sleep.
@@ -32,8 +32,8 @@ Everything (MCU + boost + driver) runs from a **single 1S Li-ion cell**.
 
 ```
  BAT 1S Li-ion (3.0–4.2V) ─┬─────────────────────────► U1 ATtiny1616 VCC   (direct, NO LDO; ~0.1µA sleep)
-   (JST-PH, J1)            │                            │  PA5 SOL_PWM ─┐   PB2/PB3 UART ── J2 (auth, to key)
-                           │                            │  PA6 SOL_BOOST_EN  PA4 CODE_REQ ◄─ J2 (wake)
+   (JST-PH, J1)            │                            │  PA5 SOL_PWM ─┐   PB0/PB1 I2C ── J2 (target; key=master)
+                           │                            │  PA6 SOL_BOOST_EN  wake-on-I2C: SCL START (no wake line)
                            │   SOL_BOOST_EN ──► EN       │  PA0 UPDI ─────── J4 (program)
                            └─► U2 MT3608 boost ──► +12V (VSOL) ─┬─ C5 220µF + C6 22µF  (reservoir)
                                L1 10µH · D2 SS34               │
@@ -69,7 +69,7 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 | R1 | 1 k | status LED | C11702 | **Basic** | 0402 |
 | D1 | LED green | status | C160479 | ext | 0402 |
 | J1,J3 | JST-PH 2-pin | battery / solenoid | C173752 | ext | PH 2.0 |
-| J2,J4 | pin header | auth UART / UPDI | — | — | 1×4 / 1×3 |
+| J2,J4 | pin header | auth I2C / UPDI | — | — | 1×3 / 1×3 |
 
 \* jlcsearch under-reports Basic flags; verify in JLCPCB's BOM tool at order time.
 
@@ -92,25 +92,31 @@ Set Vout exactly with the FB divider: `Vout = 0.6·(1 + R3/R4)`. 200 k/10 k ≈
 
 ## Authenticated digital interface + Firmware plan
 
-The ephemerkey↔lock link is a **4-wire authenticated UART** (J2 here ↔ ephemerkey
-J2, straight-through cable):
+The ephemerkey↔lock link is a **3-wire authenticated I2C** bus — **ephemerkey is
+the master**, this lock is the target (J2 here ↔ ephemerkey J2, straight-through
+cable):
 
-| Pin | lock (this board) | ephemerkey (key) |
-|-----|-------------------|------------------|
+| Pin | lock (this board, target) | ephemerkey (key, master) |
+|-----|---------------------------|--------------------------|
 | 1 | GND | GND |
-| 2 | `CODE_REQ` in → PA4 (wake) | `CODE_REQ` out (PB3) |
-| 3 | `RXD` ← PB3 | `KEY_TX` (PB0) |
-| 4 | `TXD` → PB2 | `KEY_RX` (PB1) |
+| 2 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PB1) |
+| 3 | `SDA` ↔ PB1 | `LOCK_SDA` (PB0) |
+
+Bus pull-ups live on **ephemerkey** (master) to its 3.3 V — not on this board (the
+lock runs at VBAT; master-side pull-ups avoid the cross-domain). The lock is the
+**target** at addr 0x60 with **no separate wake line** — it wakes from power-down on
+the first I2C START (a pin-change interrupt on SCL), so we don't mix a discrete
+"button"-style input with the bus.
 
 Authentication is **firmware HMAC** — no secure element. A pairing secret lives
 in flash on **both** boards (separate from ephemerkey's TOTP secret).
 
 **Protocol (challenge-response, anti-replay):**
 
-1. Key wakes the lock (`CODE_REQ`).
-2. Lock → key: a fresh random **nonce**.
-3. Key → lock: `HMAC-SHA1(secret, nonce [‖ code])`.
-4. Lock recomputes locally and **constant-time** compares. Match → actuate;
+1. Master starts an I2C transaction — the first START wakes the lock — and
+   **reads** a fresh random **nonce** from it.
+2. Master **writes** `HMAC-SHA1(secret, nonce [‖ code])` to the lock.
+3. Lock recomputes locally and **constant-time** compares. Match → actuate;
    mismatch/timeout → stay locked, rate-limit, re-sleep.
 
 The nonce defeats replay. Optionally fold in a monotonic counter (EEPROM) so a
@@ -120,8 +126,9 @@ the unlock to a fresh in-fence code.
 **Lock firmware (ATtiny1616 — megaTinyCore or bare AVR):**
 
 - State machine: `SLEEP(power-down)` → `AUTH` → `ACTUATE` → `SLEEP`.
-- In `SLEEP`: USART/boost off; `R6` holds Q1 off; `R2` holds boost off; PA4
-  pin-change interrupt armed.
+- In `SLEEP`: TWI/boost off; `R6` holds Q1 off; `R2` holds boost off; a pin-change
+  interrupt on **SCL** (PB0) is armed so the first I2C START wakes it (wake-on-I2C,
+  no separate trigger line). On wake, enable TWI0 as target.
 - `ACTUATE` = the **peak-and-hold economizer**: `SOL_BOOST_EN=1` → wait ~2–5 ms
   for VSOL → `SOL_PWM` 100 % for the pull-in window (~20–50 ms) → reduce PWM duty
   (~⅓, tune to coil) for the hold/unlock window → `SOL_PWM=0` → `SOL_BOOST_EN=0`.
@@ -133,9 +140,10 @@ the unlock to a fresh in-fence code.
 
 **Key firmware (ephemerkey STM32U083 — add to its superloop):**
 
-- On an unlock request (button + in-fence + fresh, valid TOTP), assert
-  `CODE_REQ` (PB3), open the UART (PB0/PB1), receive the nonce, compute the same
-  `HMAC-SHA1(secret, nonce[‖ code])`, reply, deassert, return to Stop.
+- On an unlock request (button + in-fence + fresh, valid TOTP), drive I2C as
+  master (PB0/PB1) — the first START wakes the lock — read the nonce, compute the
+  same `HMAC-SHA1(secret, nonce[‖ code])`, write it back, return to Stop. (Send a
+  dummy/wake byte first and retry, since the just-woken target NACKs the first.)
 - Use the **same** HMAC-SHA1 code as the lock for interop — `smalltotp` already
   ships HMAC-SHA1/SHA1/Base32, so both boards reuse it directly (no extra crypto
   to write or audit).
@@ -149,9 +157,9 @@ the unlock to a fresh in-fence code.
 ## Bring-up checklist
 
 1. Power from a current-limited 1S cell; confirm the MCU enumerates over UPDI and
-   sleeps at ~µA with `CODE_REQ` idle.
+   sleeps at ~µA with the I2C bus idle.
 2. Pulse `SOL_BOOST_EN`; scope VSOL → should reach ~12.6 V; trim R3 if needed.
 3. With a solenoid fitted, tune the pull-in time and hold duty; add the R9/C7
    snubber (DNP) only if drain ringing is high.
-4. Bring up the UART challenge-response against ephemerkey; verify a wrong/late
-   response never actuates.
+4. Bring up the I2C challenge-response against ephemerkey (confirm wake-on-I2C +
+   the dummy-then-retry handshake); verify a wrong/late response never actuates.
