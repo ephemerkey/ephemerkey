@@ -154,6 +154,8 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
              lcsc="C173752", mpn="S2B-PH-K-S", mfr="JST"),
         dict(ref="J5", lib_id="Connector_Generic:Conn_01x03",
              value="SERVO S/V+/GND", fp=HDR3),
+        dict(ref="J8", lib_id="Connector_Generic:Conn_01x03",
+             value="SERVO2 S/V+/GND", fp=HDR3),
     ],
     small=[
         dict(ref="C5", lib_id="Device:C_Polarized", value="220uF 25V", fp=ELEC637,
@@ -183,73 +185,57 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
         R("R19", "100k"),                                 # Q3 gate pull-up (default off)
         R("R20", "100k"),                                 # SERVO_PWR_EN node pulldown
         R("R21", "10k"),                                  # SERVO_PWR_EN series (Q5 override)
+        R("R24", "1k"),                                   # servo2 signal series
+        R("R25", "10k"),                                  # servo2 signal idle pulldown
     ])
 
 # ============================ wiring notes (pinout guides) ====================
-MCU["note"] = (12, 140, """Controller — ATtiny1616 (QFN-20) + firmware HMAC auth + I2C target (ephemerkey = master; wake-on-I2C).  PLACED, not wired.
-U1 ATtiny1616 (runs DIRECT off BAT 1.8-5.5V -- NO LDO; ~0.1uA power-down):
-  pin fn               net                       pin fn        net
-   4  VCC              BAT+  (C1 100nF, C2 1uF)    3  GND       GND   (+ EP pin 21 -> GND)
-  19  PA0/RESET        UPDI -> J4 (program)        5  PA4       HALL_PWR -> J6/J7 V+ (gated low-power)
-  14  PB0 TWI0 SCL     <- J2.4 (I2C clk + WAKE)    6  PA5 TCB0 WO  SOL_PWM -> DRV Q1 gate
-  13  PB1 TWI0 SDA     <> J2.3 (I2C data)          7  PA6       SOL_BOOST_EN -> PWR U2.EN
-   2  PA3              STATUS LED D1 + R1 1k       8  PB2 TCA0  SERVO_SIG -> J5.1 (servo PWM)
-  20  PA1 BOOST_VSEL -> Q2 (6V def / 12V on)       1  PA2  SERVO_PWR_EN -> Q4 (servo high-side)
-   8  PA7 HALL_DOOR <- J6.3                       11  PB3  HALL_BOLT <- J7.3        spare: PB4,PB5,PC0..PC3
-I2C: lock = TARGET (addr 0x60); ephemerkey = MASTER ("ephemerkey drives"). Bus pull-ups are on the MASTER side
-  at +3V3 (NOT on the lock) -- the lock runs at VBAT and its TWI pins are open-drain / sink-only, so master-side
-  3V3 pull-ups avoid the 3V3/VBAT cross-domain (target reads a 3V3 high fine: VIH ~0.7*VBAT). Short cable, ~100kHz.
-WAKE-ON-I2C (NO discrete wake / "button" line): in power-down the lock arms a pin-change interrupt on SCL (PB0);
-  the master's first START wakes it -> firmware disables the pin-int and enables TWI0 as target. The just-woken
-  target NACKs the very first address, so the master sends a dummy/wake xfer then retries (or clock-stretches).
-AUTHENTICATION (firmware HMAC on U1 -- NO secure element): a shared secret in ATtiny flash backs an
-  HMAC-SHA1 challenge-response over I2C (J2): master READS a fresh random nonce from the lock, then WRITES
-  HMAC(secret, nonce[||code]); lock recomputes and compares constant-time. Anti-replay via the nonce.
-  HMAC-SHA1 reuses smalltotp on BOTH boards and fits easily in 16KB flash / 2KB SRAM (HMAC-SHA1 stays
-  sound -- it does not rely on SHA1 collision resistance). Protect the secret: disable UPDI / set lockbits
-  in production so flash cannot be read back.
-J2 I2C INTERFACE (RA JST-PH 4-pin, S4B-PH-K, to ephemerkey master): 1 GND  2 VCC=NC (lock self-powered)  3 SDA  4 SCL(+wake).
-  Standard 4-pin I2C cable; VCC left unconnected here (the lock runs off its own cell -- do NOT bridge the battery rails).
-J4 UPDI PROGRAM 1x3: 1 UPDI (PA0)  2 VCC (BAT)  3 GND.  1-wire UPDI: pymcuprog / megaTinyCore / Atmel-ICE / Serial-UPDI.
-HALL DOOR/BOLT SENSORS: J6 = door, J7 = bolt (RA JST-PH 3-pin, S3B-PH-K): 1 V+ = HALL_PWR  2 GND  3 OUT.
-   LOW-POWER: HALL_PWR (PA4 GPIO) feeds the sensors' V+ AND the R22/R23 pull-ups -- pulse high to sample, low to sleep
-   (~0uA idle, no standby leak).  OUT -> HALL_DOOR (PA7) / HALL_BOLT (PB3); R22/R23 10k -> HALL_PWR; C9/C10 100nF debounce.
-   Use a micropower hall switch at the door.  ephemerkey reads door/bolt over I2C (STATUS reg).  (Instant wake-on-open:
-   tie V+ to BAT + route OUT to a fully-async pin instead.)
-SLEEP: U1 power-down ~0.1uA; SCL START (pin-int on PB0) wakes it -> TWI target on -> authenticate -> boost on -> drive -> sleep.""")
+MCU["note"] = (12, 140, """MCU — ATtiny1616 (QFN-20) controller.  Pinout / nets (PLACED, not wired).  Runs off BAT, no LDO.
+ pin name        net                              pin name   net
+  4 VCC          BAT+  (C1, C2 to GND)             3 GND      GND  (+ EP pin 21)
+ 19 PA0/RESET    UPDI = J4.1                        5 PA4      HALL_PWR -> J6.1, J7.1, R22, R23
+ 14 PB0 SCL      = J2.4   (I2C clk + wake)          6 PA5      SOL_PWM -> DRV R5
+ 13 PB1 SDA      = J2.3   (I2C data)                7 PA6      SOL_BOOST_EN -> PWR U2.EN
+  2 PA3          LED: PA3 -> D1 -> R1 -> GND        8 PB2      SERVO_SIG  -> DRV R15
+ 20 PA1          BOOST_VSEL -> PWR Q2 + DRV Q5      1 PA2      SERVO_PWR_EN -> DRV R21
+  8 PA7          HALL_DOOR  <- J6.3                11 PB3      HALL_BOLT  <- J7.3
+                 PB4  SERVO_SIG2 -> DRV R24            spare:  PB5, PC0, PC1, PC2, PC3
+PASSIVES:  C1 100nF VCC--GND    C2 1uF VCC--GND    D1 LED + R1 1k:  PA3 -- D1 -- R1 -- GND
+J2 I2C   (S4B-PH-K 4-pin):  1 = GND   2 = VCC (No-Connect)   3 = SDA (PB1)   4 = SCL (PB0)
+J4 UPDI  (1x3 header):      1 = UPDI (PA0)   2 = VCC (BAT)   3 = GND
+J6 HALL DOOR (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PA7 ;  R22 10k OUT--HALL_PWR ;  C9  100nF OUT--GND
+J7 HALL BOLT (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PB3 ;  R23 10k OUT--HALL_PWR ;  C10 100nF OUT--GND""")
 
-PWR["note"] = (12, 120, """Power — BAT 1S Li-ion -> MT3608 boost -> +12V (VSOL).  Boost GATED OFF except during actuation.  PLACED, not wired.
-J1 BAT 1S (JST-PH): 1 = BAT+   2 = GND   (protected 1S Li-ion pack, 3.0-4.2V).
-   BAT+ ALSO powers U1 directly (MCU sheet) -- there is no LDO; the ATtiny runs on the raw cell.
-U2 MT3608 (SOT-23-6 boost):
-   1 SW  -> L1 / D2 anode        4 EN  <- SOL_BOOST_EN  (R2 100k pulldown = OFF at boot / MCU asleep)
-   2 GND -> GND                  5 IN  <- BAT+  (C3 10uF)
-   3 FB  <- R3/R4 node           6 NC
-   BOOST: BAT+ -> L1 10uH -> SW(1) ; SW -> D2 SS34 -> VSOL(+12V) ; C4 22uF on VSOL.
-   FB divider (FIRMWARE-SELECTABLE Vout): VSOL -> R3 200k -> FB -> R4 22k -> GND  => 6V (default).
-   BOOST_VSEL (U1 PA1) -> Q2 NMOS switches R17 20k in parallel with R4 (=>~10.5k) => ~12V.  R18 100k pulldown = default 6V.
-   Sequence: set BOOST_VSEL, THEN SOL_BOOST_EN (boost comes up at the chosen rail; no live 12->6 dip onto a servo).
-   6V = servo rail ; 12V = solenoid.  (Replaces the old manual R3 swap.)
-SIZING: MT3608 ~2A switch ~= ~0.5A @12V continuous -> sized for HOLD current + reservoir recharge.
-   A sustained 1A @12V pull-in exceeds this -> use a bigger boost (e.g. TPS61088) + larger reservoir; see DESIGN.md.""")
+PWR["note"] = (12, 120, """PWR — battery 1S + MT3608 boost.  Pinout / nets (PLACED, not wired).
+J1 BAT 1S   1 = BAT+    2 = GND        (JST-PH; BAT+ also powers U1/MCU, and feeds DRV)
+U2 MT3608   1 SW    2 GND    3 FB    4 EN    5 IN    6 NC
+L1 10uH     BAT+ -- SW (U2.1)                       D2 SS34:  A = SW    K = VSOL(+12V)
+C3 10uF     1 = BAT+ (= U2 IN)   2 = GND            C4 22uF:  1 = VSOL   2 = GND
+R3 200k     VSOL -- FB                              (FB top)
+R4 22k      FB -- GND                               (FB base -> 6V)
+R17 20k     FB -- Q2.D                              (switched in -> 12V)
+Q2 AO3400   1 G = BOOST_VSEL   2 S = GND   3 D = R17    (FB switch: 6V <-> 12V)
+R2 100k     U2.EN -- GND                            R18 100k:  BOOST_VSEL -- GND   (default OFF / 6V)
+NETS IN:  U2.EN <- SOL_BOOST_EN (PA6) ;  BOOST_VSEL <- PA1.    OUT:  BAT+, VSOL -> DRV.
+Vout = 0.6*(1 + R3/Rbot):  Rbot = R4 -> 6V ;  R4 || R17 (Q2 on) -> 12V.""")
 
-DRV["note"] = (12, 95, """Solenoid driver — 12V peak-and-hold, low-side N-FET.  PLACED, not wired.
-RAIL: VSOL(+12V) from PWR sheet.  C5 220uF (electrolytic) + C6 22uF reservoir on VSOL -> supplies the pull-in surge.
-SOLENOID J3 (JST-PH): 1 = VSOL(+12V)   2 = SOL_DRV (Q1 drain).
-D3 SS34 FLYBACK across the coil: anode = SOL_DRV, cathode = VSOL  (clamps the coil's collapse to VSOL + ~0.5V).
-Q1 AO3400A low-side N-FET (SOT-23, logic-level): 1 G <- R5 100R <- SOL_PWM ;  2 S -> GND ;  3 D -> SOL_DRV.
-   R6 100k gate->GND: holds Q1 OFF through reset / power-up / while the MCU sleeps (the lock cannot self-fire).
-PEAK-AND-HOLD (firmware on U1): SOL_BOOST_EN=1 -> wait VSOL settle -> SOL_PWM 100% pull-in (~20-50 ms)
-   -> drop PWM duty for HOLD (~1/3, tune to the coil) -> on release SOL_PWM=0 then SOL_BOOST_EN=0.
-SNUBBER (optional, DNP): R9 10R + C7 1nF from SOL_DRV -> GND; fit at bring-up only if drain ringing is high.
------ SERVO OPTION (parallel actuator + firmware-switched power; ONE board can carry BOTH solenoid and servo) -----
-J5 SERVO (1x3 RC servo): 1 SIG <- SERVO_SIG (U1 PB2 = TCA0 50Hz PWM, via R15 1k; R16 10k pulldown = idle-safe)  2 V+ = VSERVO  3 GND.
-VSERVO_SRC -- FIT EXACTLY ONE 0R:  R13 = VBAT (1S servo)  |  R14 = VSOL (6V via boost; BOOST_VSEL low).  Never both.
-HIGH-SIDE SWITCH: Q3 AO3401 P-FET (src = VSERVO_SRC, drn = VSERVO -> J5.2 + C8 220uF).  R19 100k gate->src = default OFF.
-   Q4 AO3400 pulls Q3 gate low to turn the servo ON; gate node <- SERVO_PWR_EN (U1 PA2) via R21 10k.  R20 100k pulldown.
-INTERLOCK: Q5 AO3400 (gate = BOOST_VSEL) shorts the Q4 gate node to GND when boost = 12V -> servo power FORCED OFF at full
-   boost, even if firmware drives SERVO_PWR_EN high.  (R21 lets Q5 override the GPIO.)
-=> 6V mode + SERVO_PWR_EN=1 -> servo powered ; 12V mode -> servo hard-off.  SERVO_SIG is GND-referenced VBAT-logic.""")
+DRV["note"] = (12, 95, """DRV — solenoid + dual-servo driver.  Pinout / nets (PLACED, not wired).  Tie pins that share a net name.
+NETS IN:  VSOL(+12V), BAT+ <- PWR ;  SOL_PWM(PA5) SERVO_SIG(PB2) SERVO_SIG2(PB4) SERVO_PWR_EN(PA2) BOOST_VSEL(PA1) <- MCU
+Q1  AO3400A   1 G = Q1G        2 S = GND          3 D = SOL_DRV       (solenoid low-side)
+J3  SOLENOID  1 = VSOL         2 = SOL_DRV
+D3  SS34      A = SOL_DRV      K = VSOL                               (flyback across the coil)
+C5  220uF     + = VSOL    - = GND        C6 22uF:  1 = VSOL    2 = GND        (reservoir)
+R5  100R      SOL_PWM -- Q1G             R6 100k:  Q1G -- GND     (gate drive + off-safe pulldown)
+R9* 10R       SOL_DRV -- C7.1            C7* 1nF:  C7.2 -- GND    (*DNP drain snubber)
+R13 0R        BAT+ -- VSERVO_SRC   |   R14* 0R:  VSOL -- VSERVO_SRC   (fit ONE: BAT+ = 1S servo, VSOL = 6V servo)
+Q3  AO3401A   1 G = Q3G        2 S = VSERVO_SRC   3 D = VSERVO        (servo high-side switch)
+R19 100k      Q3G -- VSERVO_SRC                                      (Q3 gate pull-up = default OFF)
+Q4  AO3400A   1 G = ENNODE     2 S = GND          3 D = Q3G          (pulls Q3 ON when ENNODE high)
+R20 100k      ENNODE -- GND               R21 10k:  SERVO_PWR_EN -- ENNODE
+Q5  AO3400A   1 G = BOOST_VSEL  2 S = GND   3 D = ENNODE             (INTERLOCK: 12V -> servo power OFF)
+C8  220uF     + = VSERVO   - = GND                                   (servo bulk)
+J5  SERVO     1 = SIG1   2 = VSERVO   3 = GND    R15 1k:  SERVO_SIG  -- SIG1   R16 10k:  SIG1 -- GND
+J8  SERVO2    1 = SIG2   2 = VSERVO   3 = GND    R24 1k:  SERVO_SIG2 -- SIG2   R25 10k:  SIG2 -- GND""")
 
 
 # ============================ generate =======================================

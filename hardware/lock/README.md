@@ -67,14 +67,14 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 | R4 | 22 k | FB base → 6 V default | C25768 | **Basic** | 0402 |
 | R17 | 20 k | FB switch → 12 V (Q2) | C25765 | **Basic** | 0402 |
 | R2,R6,R18,R19,R20 | 100 k | pulldowns / P-FET gate pull-up | C25741 | **Basic** | 0402 |
-| R16,R21,R22,R23 | 10 k | servo pulldown/series, hall pull-ups | C25744 | **Basic** | 0402 |
+| R16,R21,R22,R23,R25 | 10 k | servo pulldowns/series, hall pull-ups | C25744 | **Basic** | 0402 |
 | R5 | 100 Ω | gate series | C106232 | ext* | 0402 |
-| R1,R15 | 1 k | status LED / servo signal series | C11702 | **Basic** | 0402 |
+| R1,R15,R24 | 1 k | status LED / servo signal series | C11702 | **Basic** | 0402 |
 | D1 | LED green | status | C160479 | ext | 0402 |
 | J1,J3 | JST-PH 2-pin | battery / solenoid | C173752 | ext | PH 2.0 |
 | J2 | JST-PH 4-pin RA (S4B-PH-K) | I2C link (right-angle) | C157926 | ext | PH 2.0 RA |
 | J4 | pin header 1×3 | UPDI program | — | — | 1×3 |
-| J5 | pin header 1×3 | servo (S/V+/GND), DNP unless servo build | — | — | 1×3 |
+| J5,J8 | pin header 1×3 | servo outputs (S/V+/GND), DNP unless servo build | — | — | 1×3 |
 | R13,R14 | 0 Ω | VSERVO source select (fit one) | C17168 | **Basic** | 0402 |
 | J6,J7 | JST-PH 3-pin RA (S3B-PH-K) | door / bolt hall sensors | C157929 | ext | PH 2.0 RA |
 
@@ -122,7 +122,10 @@ boost = a single voltage). Firmware drives three lines:
 | Servo, 6 V | 6 V | on | J5 servo, VSERVO ← VSOL (`R14`) |
 | Servo, 1S | 6 V (boost can be off) | on | J5 servo, VSERVO ← VBAT (`R13`) |
 
-- **J5** — 3-pin RC-servo header: `1=SIG, 2=V+ (VSERVO), 3=GND`.
+- **J5 / J8** — two 3-pin RC-servo outputs (`1=SIG, 2=V+ (VSERVO), 3=GND`), e.g. a
+  dual-latch lock. `SERVO_SIG` (PB2/TCA0) and `SERVO_SIG2` (PB4, software-timed);
+  both share the `VSERVO` rail and the load-switch/interlock. MT3608 ~1 A @ 6 V —
+  drive them sequentially, or upsize C5/C8 for simultaneous travel.
 - **VSERVO source** — fit **exactly one** 0 Ω: `R13 = VBAT` (1S) or `R14 = VSOL`
   (6 V from the boost). **Never both.** C8 (220 µF) buffers servo inrush; MT3608
   sources ~1 A @ 6 V — fine for brief moves.

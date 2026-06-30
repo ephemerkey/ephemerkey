@@ -39,9 +39,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.762,
-          "height": 1.524,
-          "width": 1.524
+          "drill": 0.0,
+          "height": 1.65,
+          "width": 1.65
         },
         "silk_line_width": 0.15,
         "silk_text_italic": false,
@@ -50,7 +50,23 @@
         "silk_text_thickness": 0.125,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.15
+          "border_display_style": 2,
+          "border_hatch_pitch": 0.5,
+          "corner_radius": 0.0,
+          "corner_smoothing": 1,
+          "fill_mode": 0,
+          "hatch_gap": 1.5,
+          "hatch_orientation": 0.0,
+          "hatch_smoothing_level": 0,
+          "hatch_smoothing_value": 0.1,
+          "hatch_thickness": 1.0,
+          "min_clearance": 0.15,
+          "min_island_area": 10.0,
+          "min_thickness": 0.25,
+          "pad_connection": 3,
+          "remove_islands": 0,
+          "thermal_relief_gap": 0.5,
+          "thermal_relief_spoke_width": 0.5
         }
       },
       "diff_pair_dimensions": [
@@ -695,24 +711,24 @@
         "uuid": "e1000000-0000-4000-8000-000000000002"
       }
     ],
-    "used_designators": "",
+    "used_designators": "H2-3,C11,R7,R26,#PWR2-43",
     "variants": []
   },
   "sheets": [
     [
       "e1000000-0000-4000-8000-000000000002",
-      "lock"
+      ""
     ],
     [
-      "29e9cd61-5443-4c71-81c7-72258ca592d3",
+      "9796a12a-a53a-47bc-9480-fd5121fe7c15",
       "MCU"
     ],
     [
-      "2e130db5-a926-472e-84a7-97cbb2425133",
+      "160577bc-cef3-42f1-add6-6af73c00e86b",
       "PWR"
     ],
     [
-      "15743cff-7c76-4e56-af1d-b88257db18ac",
+      "f6303f44-46e8-4b09-b5a2-702988f5f05e",
       "DRV"
     ]
   ],
