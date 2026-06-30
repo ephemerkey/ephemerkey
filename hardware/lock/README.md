@@ -55,23 +55,33 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 |-----|------|-------|------|-----|-----------|
 | U1 | ATtiny1616 | tinyAVR-1, runs 1.8–5.5 V | C507118 | ext | QFN-20 3×3 0.4 mm |
 | U2 | MT3608 | boost, ~2 A switch | C84817 | ext | SOT-23-6 |
-| Q1 | AO3400A | N-FET 30 V/5.7 A logic-level | C20917 | **Basic** | SOT-23 |
+| Q1,Q2,Q4,Q5 | AO3400A | N-FET (solenoid LS, FB switch, servo logic, interlock) | C20917 | **Basic** | SOT-23 |
+| Q3 | AO3401A | P-FET (servo high-side load switch) | C15127 | **Basic** | SOT-23 |
 | D2,D3 | SS34 | Schottky 40 V/3 A | C8678 | **Basic** | SMA |
 | L1 | FNR6045S100MT | 10 µH power inductor | C168076 | ext | 6×6 mm |
-| C5 | 220 µF 25 V | reservoir (electrolytic) | C2918361 | ext | Ø6.3×7.7 |
+| C5,C8 | 220 µF 25 V | reservoir / VSERVO bulk (electrolytic) | C2918361 | ext | Ø6.3×7.7 |
 | C4,C6 | 22 µF 25 V | boost out / VSOL bypass | C12891 | **Basic** | 1206 |
 | C3 | 10 µF 25 V | boost in | C15850 | **Basic** | 0805 |
-| C1,C2,C7 | 100 nF / 1 µF / 1 nF | decouple / snubber(DNP) | C1525/C29266 | **Basic** | 0402 |
+| C1,C2,C7,C9,C10 | 100 nF / 1 µF / 1 nF | decouple / hall debounce / snubber(DNP) | C1525/C29266 | **Basic** | 0402 |
 | R3 | 200 k | FB top | C25764 | **Basic** | 0402 |
-| R2,R6 | 100 k | EN pulldown / gate pulldown | C25741 | **Basic** | 0402 |
-| R4 | 10 k | FB bottom | C25744 | **Basic** | 0402 |
+| R4 | 22 k | FB base → 6 V default | C25768 | **Basic** | 0402 |
+| R17 | 20 k | FB switch → 12 V (Q2) | C25765 | **Basic** | 0402 |
+| R2,R6,R18,R19,R20 | 100 k | pulldowns / P-FET gate pull-up | C25741 | **Basic** | 0402 |
+| R16,R21,R22,R23 | 10 k | servo pulldown/series, hall pull-ups | C25744 | **Basic** | 0402 |
 | R5 | 100 Ω | gate series | C106232 | ext* | 0402 |
-| R1 | 1 k | status LED | C11702 | **Basic** | 0402 |
+| R1,R15 | 1 k | status LED / servo signal series | C11702 | **Basic** | 0402 |
 | D1 | LED green | status | C160479 | ext | 0402 |
 | J1,J3 | JST-PH 2-pin | battery / solenoid | C173752 | ext | PH 2.0 |
-| J2,J4 | pin header | auth I2C / UPDI | — | — | 1×3 / 1×3 |
+| J2 | JST-PH 4-pin RA (S4B-PH-K) | I2C link (right-angle) | C157926 | ext | PH 2.0 RA |
+| J4 | pin header 1×3 | UPDI program | — | — | 1×3 |
+| J5 | pin header 1×3 | servo (S/V+/GND), DNP unless servo build | — | — | 1×3 |
+| R13,R14 | 0 Ω | VSERVO source select (fit one) | C17168 | **Basic** | 0402 |
+| J6,J7 | JST-PH 3-pin RA (S3B-PH-K) | door / bolt hall sensors | C157929 | ext | PH 2.0 RA |
 
 \* jlcsearch under-reports Basic flags; verify in JLCPCB's BOM tool at order time.
+
+Every footprint is a KiCad-bundled package, so **all parts carry 3D models** — the
+board is clearance-checkable in KiCad's 3D viewer once it's laid out.
 
 ## Boost + reservoir sizing (read before ordering)
 
@@ -90,17 +100,46 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 Set Vout exactly with the FB divider: `Vout = 0.6·(1 + R3/R4)`. 200 k/10 k ≈
 12.6 V; trim R3 toward 12.0 V if desired.
 
+## Servo variant + firmware actuator control
+
+The board drives a **12 V solenoid** or a **6 V RC servo**. Because the boost
+voltage and the servo power are both firmware-controlled, **one fully-populated board
+can carry both** and switch between them (one actuator active at a time — a single
+boost = a single voltage). Firmware drives three lines:
+
+- **`BOOST_VSEL`** (PA1) — picks the rail: low/default **6 V** (servo-safe), high
+  **12 V** (solenoid). NMOS Q2 switches R17 across the FB divider.
+- **`SERVO_PWR_EN`** (PA2) — high-side P-FET (Q3) load switch on VSERVO. Servo power
+  comes on only when firmware asserts it **and** the boost is at 6 V: a **hardware
+  interlock** (Q5, gated by `BOOST_VSEL`) forces servo power OFF at 12 V regardless of
+  firmware, so a 12 V solenoid pulse can never reach a 6 V servo.
+- **`SERVO_SIG`** (PB2 / TCA0) — 50 Hz position pulse, via R15 (1 k) + R16 (10 k idle
+  pulldown) so the servo can't twitch at boot.
+
+| Mode | BOOST_VSEL | SERVO_PWR_EN | Actuator |
+|------|-----------|--------------|----------|
+| Solenoid | 12 V | off (interlock-forced) | Q1/D3/J3 peak-and-hold |
+| Servo, 6 V | 6 V | on | J5 servo, VSERVO ← VSOL (`R14`) |
+| Servo, 1S | 6 V (boost can be off) | on | J5 servo, VSERVO ← VBAT (`R13`) |
+
+- **J5** — 3-pin RC-servo header: `1=SIG, 2=V+ (VSERVO), 3=GND`.
+- **VSERVO source** — fit **exactly one** 0 Ω: `R13 = VBAT` (1S) or `R14 = VSOL`
+  (6 V from the boost). **Never both.** C8 (220 µF) buffers servo inrush; MT3608
+  sources ~1 A @ 6 V — fine for brief moves.
+- `SERVO_SIG` is VBAT-level logic, accepted by typical servos, referenced to GND.
+
 ## Authenticated digital interface + Firmware plan
 
-The ephemerkey↔lock link is a **3-wire authenticated I2C** bus — **ephemerkey is
-the master**, this lock is the target (J2 here ↔ ephemerkey J2, straight-through
-cable):
+The ephemerkey↔lock link is an authenticated I2C bus — **ephemerkey is the
+master**, this lock is the target — on a **right-angle 4-pin JST-PH** (`S4B-PH-K`,
+a standard 4-pin I2C cable, straight-through):
 
 | Pin | lock (this board, target) | ephemerkey (key, master) |
 |-----|---------------------------|--------------------------|
 | 1 | GND | GND |
-| 2 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PB1) |
+| 2 | VCC = **No-Connect** (self-powered) | +3V3 (host reference) |
 | 3 | `SDA` ↔ PB1 | `LOCK_SDA` (PB0) |
+| 4 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PB1) |
 
 Bus pull-ups live on **ephemerkey** (master) to its 3.3 V — not on this board (the
 lock runs at VBAT; master-side pull-ups avoid the cross-domain). The lock is the
@@ -111,43 +150,60 @@ the first I2C START (a pin-change interrupt on SCL), so we don't mix a discrete
 Authentication is **firmware HMAC** — no secure element. A pairing secret lives
 in flash on **both** boards (separate from ephemerkey's TOTP secret).
 
-**Protocol (challenge-response, anti-replay):**
+**I2C register/command map** (lock = target @ 0x60). The master reads status/nonce
+and writes *authenticated* commands:
 
-1. Master starts an I2C transaction — the first START wakes the lock — and
-   **reads** a fresh random **nonce** from it.
-2. Master **writes** `HMAC-SHA1(secret, nonce [‖ code])` to the lock.
-3. Lock recomputes locally and **constant-time** compares. Match → actuate;
-   mismatch/timeout → stay locked, rate-limit, re-sleep.
+| Reg | Access | Contents |
+|-----|--------|----------|
+| `0x00 STATUS` | read | bit0 `DOOR_CLOSED` · bit1 `BOLT_LOCKED` · bit2 `ACTUATOR` (0=solenoid,1=servo) · bit3 `RAIL_12V` · bit4 `BUSY` · bit5 `LAST_CMD_OK` |
+| `0x01 NONCE` | read | a fresh 16-byte random nonce; reading **arms** it (consumed by the next COMMAND) |
+| `0x10 COMMAND` | write | `[cmd] ‖ HMAC-SHA1(secret, nonce ‖ cmd ‖ code)` — cmd `0x01`=UNLOCK, `0x02`=LOCK |
 
-The nonce defeats replay. Optionally fold in a monotonic counter (EEPROM) so a
-weak RNG can't be exploited. `code` may be the ephemerkey TOTP digits, binding
-the unlock to a fresh in-fence code.
+**Probe lid/door state (unauthenticated read — status only):** the I2C START wakes
+the lock; the master reads `STATUS`. `DOOR_CLOSED` / `BOLT_LOCKED` report the J6/J7
+hall sensors; `ACTUATOR` tells the key whether a servo is fitted.
+
+**Lock / unlock (authenticated challenge-response, anti-replay):**
+
+1. Master reads `NONCE` (0x01).
+2. Master writes `COMMAND` = `cmd ‖ HMAC-SHA1(secret, nonce ‖ cmd ‖ code)`.
+3. Lock recomputes, **constant-time** compares against the armed nonce (then clears
+   it → replay-proof), and only then drives the actuator:
+   - **UNLOCK** (0x01): solenoid → peak-and-hold release; servo → unlock angle.
+   - **LOCK** (0x02): **servo → lock angle** (a servo holds position). For a
+     momentary solenoid, LOCK is a no-op — it re-latches mechanically (fail-secure).
+4. Master may re-read `STATUS` to confirm `BOLT_LOCKED` flipped.
+
+`code` may be the ephemerkey TOTP digits, binding the action to a fresh in-fence
+code. Optionally fold a monotonic counter (EEPROM) into the HMAC so a weak RNG
+can't be exploited.
 
 **Lock firmware (ATtiny1616 — megaTinyCore or bare AVR):**
 
-- State machine: `SLEEP(power-down)` → `AUTH` → `ACTUATE` → `SLEEP`.
-- In `SLEEP`: TWI/boost off; `R6` holds Q1 off; `R2` holds boost off; a pin-change
-  interrupt on **SCL** (PB0) is armed so the first I2C START wakes it (wake-on-I2C,
-  no separate trigger line). On wake, enable TWI0 as target.
-- `ACTUATE` = the **peak-and-hold economizer**: `SOL_BOOST_EN=1` → wait ~2–5 ms
-  for VSOL → `SOL_PWM` 100 % for the pull-in window (~20–50 ms) → reduce PWM duty
-  (~⅓, tune to coil) for the hold/unlock window → `SOL_PWM=0` → `SOL_BOOST_EN=0`.
-  PWM via TCB0 (PA5).
-- HMAC-SHA1 (reuse `smalltotp`'s implementation — `smalltotp` is portable C and
-  compiles for AVR) fits easily in 16 KB flash / 2 KB SRAM. Store the secret in
-  USERROW/a flash page; **disable UPDI / set lockbits** in production so flash
-  can't be read back.
+- State machine: `SLEEP(power-down)` → (I2C START wakes it) → service TWI as target
+  → `SLEEP`; a verified `COMMAND` branches to `ACTUATE`. In `SLEEP`: TWI/boost off,
+  `R6` holds Q1 off, `R2` holds boost off; SCL (PB0) pin-change wakes it (wake-on-I2C).
+- **STATUS read** → pulse `HALL_PWR` (PA4) high, settle ~1 ms, sample `HALL_DOOR`
+  (PA7) + `HALL_BOLT` (PB3), drop HALL_PWR, return the bits (~0 µA between reads).
+- **ACTUATE**:
+  - *Solenoid* — the **peak-and-hold economizer**: `SOL_BOOST_EN=1` → wait VSOL →
+    `SOL_PWM` 100 % pull-in (~20–50 ms) → reduce duty for hold → release. PWM = TCB0 (PA5).
+  - *Servo* — `BOOST_VSEL`=6 V, `SERVO_PWR_EN`=on, drive `SERVO_SIG` (PB2/TCA0) to
+    the lock/unlock angle, wait for travel, then cut servo power. The hardware
+    interlock keeps servo power off whenever `BOOST_VSEL`=12 V.
+- HMAC-SHA1 (reuse `smalltotp`, portable C → compiles for AVR) fits in 16 KB/2 KB.
+  Secret in USERROW/flash; **disable UPDI / set lockbits** in production.
 
 **Key firmware (ephemerkey STM32U083 — add to its superloop):**
 
-- On an unlock request (button + in-fence + fresh, valid TOTP), drive I2C as
-  master (PB0/PB1) — the first START wakes the lock — read the nonce, compute the
-  same `HMAC-SHA1(secret, nonce[‖ code])`, write it back, return to Stop. (Send a
-  dummy/wake byte first and retry, since the just-woken target NACKs the first.)
-- Use the **same** HMAC-SHA1 code as the lock for interop — `smalltotp` already
-  ships HMAC-SHA1/SHA1/Base32, so both boards reuse it directly (no extra crypto
-  to write or audit).
-- The pairing secret is provisioned over USB during a pairing step.
+- **Probe the lid:** wake the lock (I2C START) and read `STATUS` — surface door
+  open/closed + bolt locked/unlocked (e.g. on the OLED); no auth needed.
+- **Lock / unlock:** on a request (button + in-fence + fresh, valid TOTP), read
+  `NONCE`, compute `HMAC-SHA1(secret, nonce ‖ cmd ‖ code)`, write `COMMAND` with cmd
+  = UNLOCK or LOCK. (Send a dummy/wake byte first and retry — the just-woken target
+  NACKs the first.) Re-read `STATUS` to confirm.
+- Use the **same** HMAC-SHA1 as the lock — `smalltotp` ships it, so both reuse it.
+- The pairing secret is provisioned over USB during pairing.
 
 ## Programming
 

@@ -257,15 +257,16 @@ SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
 ## Code Output Interface (to the companion lock)
 
 The companion **lock board lives in this repo at `hardware/lock/`** (a second
-PCB; see its README). ephemerkey talks to it over a **3-wire authenticated I2C**
-bus — **ephemerkey is the master** — on J2 (1×3, opto-isolatable), straight-through
-to the lock's J2:
+PCB; see its README). ephemerkey talks to it over an authenticated I2C bus —
+**ephemerkey is the master** — on J2, a **right-angle 4-pin JST-PH** (`S4B-PH-K`,
+a standard 4-pin I2C cable), straight-through to the lock's J2:
 
 | J2 pin | net | dir | function |
 |--------|-----|-----|----------|
 | 1 | GND | — | common ground |
-| 2 | LOCK_SCL | out (PB1) | I2C clock — ephemerkey is master; also the lock's wake edge |
+| 2 | VCC | +3V3 (here) | host/bus reference; **No-Connect on the lock** — don't bridge the two battery rails |
 | 3 | LOCK_SDA | bidir (PB0) | I2C data |
+| 4 | LOCK_SCL | out (PB1) | I2C clock — ephemerkey is master; also the lock's wake edge |
 
 There is **no separate wake/trigger line** — the lock sleeps in power-down and
 wakes on the first I2C START (a pin-change interrupt on SCL), so we don't mix a
@@ -276,25 +277,24 @@ The I2C pull-ups (≈4.7 kΩ, R11/R12) sit on **this** board to +3V3 (master sid
 the bus idles at 3.3 V; the lock's BAT-powered (≤4.2 V) open-drain target pins only
 sink, so there is no 3.3 V/VBAT cross-domain conflict. Keep the cable short (100 kHz).
 
-**Authentication (firmware HMAC, no secure element).** A pairing secret (distinct
-from the TOTP secret) is held in flash on both boards. On an unlock request —
-(in-fence) ∧ (valid fix) ∧ (fresh clock) ∧ (button/armed) — ephemerkey runs a
-challenge-response so a spoofed strobe cannot open the lock:
+**Register interface + authentication (firmware HMAC, no secure element).** The lock
+exposes `STATUS` (read), `NONCE` (read), and `COMMAND` (write) registers; a pairing
+secret (distinct from the TOTP secret) is held in flash on both boards.
 
-1. ephemerkey starts an I2C transaction; the first START wakes the lock
-   (wake-on-I2C), and ephemerkey **reads** a random **nonce** from it.
-2. ephemerkey **writes** `HMAC-SHA1(secret, nonce ‖ code)` to the lock (the `code`
-   binds it to a fresh in-fence TOTP).
-3. the lock recomputes, constant-time compares, and only then actuates. The
-   nonce provides anti-replay.
+- **Probe lid state** (no auth): wake the lock (I2C START) and read `STATUS` — door
+  open/closed, bolt locked/unlocked, and whether a servo is fitted (show on the OLED).
+- **Lock / unlock** (authenticated), on a request — (in-fence) ∧ (valid fix) ∧ (fresh
+  clock) ∧ (button/armed): read `NONCE`, then write `COMMAND` =
+  `cmd ‖ HMAC-SHA1(secret, nonce ‖ cmd ‖ code)`, cmd ∈ {UNLOCK, LOCK}. The lock
+  constant-time compares against the armed nonce (replay-proof) and only then drives
+  the actuator — **LOCK** drives a fitted servo to the lock angle; **UNLOCK** releases
+  (solenoid peak-and-hold, or servo to the unlock angle).
 
 **Firmware plan.** Both boards use **HMAC-SHA1**, reusing `smalltotp`'s existing
-HMAC-SHA1 (no extra crypto code; HMAC-SHA1 stays sound — it doesn't rely on SHA1
-collision resistance). ephemerkey adds this to its superloop: drive I2C as master (PB0/PB1) — the first
-START wakes the lock — to read the nonce and write the HMAC, then return to Stop.
-The lock side (ATtiny1616 sleep/wake, peak-and-hold solenoid drive, fail-secure
-timing) is specified in `hardware/lock/README.md`. Optional: also show the code on
-the OLED for manual entry.
+HMAC-SHA1 (no extra crypto; HMAC-SHA1 stays sound — it doesn't rely on SHA1 collision
+resistance). ephemerkey drives the I2C master transactions (PB0/PB1) from its superloop;
+the lock side (ATtiny1616 sleep/wake, door-hall sampling, peak-and-hold or servo drive,
+fail-secure timing) is specified in `hardware/lock/README.md`.
 
 ## Security Considerations
 

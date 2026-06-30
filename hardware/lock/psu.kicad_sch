@@ -2,7 +2,7 @@
 	(version 20260306)
 	(generator "eeschema")
 	(generator_version "10.0")
-	(uuid "93559584-6df4-4ea3-bcbc-16466d18e9f1")
+	(uuid "2e130db5-a926-472e-84a7-97cbb2425133")
 	(paper "A3")
 	(title_block
 		(title "lock — Battery 1S Li-ion / 12V boost (gated)")
@@ -1019,6 +1019,307 @@
 		)
 		(embedded_fonts no)
 	)
+	(symbol "Transistor_FET:Q_NMOS_GSD"
+		(pin_names
+			(offset 0)
+			(hide yes)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "Q"
+			(at 5.08 1.905 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Q_NMOS_GSD"
+			(at 5.08 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 5.08 2.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "N-MOSFET transistor, gate/source/drain"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_keywords" "transistor NMOS N-MOS N-MOSFET"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "Q_NMOS_GSD_0_1"
+			(polyline
+				(pts
+					(xy 0.254 1.905) (xy 0.254 -1.905)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 0.254 0) (xy -2.54 0)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 0.762 2.286) (xy 0.762 1.27)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 0.762 0.508) (xy 0.762 -0.508)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 0.762 -1.27) (xy 0.762 -2.286)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 0.762 -1.778) (xy 3.302 -1.778) (xy 3.302 1.778) (xy 0.762 1.778)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 1.016 0) (xy 2.032 0.381) (xy 2.032 -0.381) (xy 1.016 0)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type outline)
+				)
+			)
+			(circle
+				(center 1.651 0)
+				(radius 2.794)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 2.54 2.54) (xy 2.54 1.778)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(circle
+				(center 2.54 1.778)
+				(radius 0.254)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type outline)
+				)
+			)
+			(circle
+				(center 2.54 -1.778)
+				(radius 0.254)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type outline)
+				)
+			)
+			(polyline
+				(pts
+					(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 2.921 0.381) (xy 3.683 0.381)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy 3.302 0.381) (xy 2.921 -0.254) (xy 3.683 -0.254) (xy 3.302 0.381)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+		)
+		(symbol "Q_NMOS_GSD_1_1"
+			(pin input line
+				(at -5.08 0 0)
+				(length 2.54)
+				(name "G"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 2.54 -5.08 90)
+				(length 2.54)
+				(name "S"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 2.54 5.08 270)
+				(length 2.54)
+				(name "D"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "3"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
+	)
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x02")
@@ -1028,7 +1329,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "3952fb6b-f4ad-49a8-b28b-7815e8badb45")
+		(uuid "44681b12-00bc-4391-a7c1-78e4206a438c")
 		(property "Reference" "J1"
 			(at 49.5300 53.3400 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1057,11 +1358,11 @@
 			(at 45.7200 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "ddab311c-0775-446b-8814-c4b9e8c6f111"))
-		(pin "2" (uuid "bb722e25-bf29-4b9f-97ab-c1c87d44d33a"))
+		(pin "1" (uuid "71073316-2bf9-4083-9423-56cf1b0e56e9"))
+		(pin "2" (uuid "48501a7e-e5c5-4e9b-a9e8-1c988ca0e2d3"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "J1")
 					(unit 1)
 				)
@@ -1076,7 +1377,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "f58cdd39-e3db-47d6-9836-7f6428b94df2")
+		(uuid "bd4149ee-11e1-4d99-af49-5968bd9f779f")
 		(property "Reference" "U2"
 			(at 146.0500 53.3400 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1105,15 +1406,15 @@
 			(at 142.2400 55.8800 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "0b580f1a-1792-42e3-822c-55da314af521"))
-		(pin "2" (uuid "959c1214-86c0-41d6-af54-e521beda5372"))
-		(pin "3" (uuid "b072b086-10dd-42af-ba24-6be0d5de0635"))
-		(pin "4" (uuid "e388006d-0030-4638-a873-641bd4359ba8"))
-		(pin "5" (uuid "4953a0c6-db57-4362-bdf3-7a39f6b7ee29"))
-		(pin "6" (uuid "effc763e-d9a2-4740-be67-a48a00772cdc"))
+		(pin "1" (uuid "5ee17bd5-a870-4c7e-b472-435c20ad58d5"))
+		(pin "2" (uuid "877d2c72-efc2-43d6-8734-e067a3c10c10"))
+		(pin "3" (uuid "de69b297-12e8-430e-ab52-f755a0e354e9"))
+		(pin "4" (uuid "61b47138-6d7a-42d5-831c-56ee09a70830"))
+		(pin "5" (uuid "d07636ee-f060-4d18-956d-278a397e1bc4"))
+		(pin "6" (uuid "d6c5d072-a261-4332-9fb8-e5c71f4c1bc2"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "U2")
 					(unit 1)
 				)
@@ -1128,7 +1429,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "f071b2bf-9dbc-4c40-81ee-9a41031419c7")
+		(uuid "349094ef-03e0-445f-9bcf-763dd43b20d0")
 		(property "Reference" "L1"
 			(at 34.2900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1157,11 +1458,11 @@
 			(at 30.4800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "2c6d06fb-1a77-4a68-b0b0-539fb8bc5a00"))
-		(pin "2" (uuid "e3a1fef3-2398-4878-8e04-fe3be58803b0"))
+		(pin "1" (uuid "d373bcea-9890-4087-a726-d55f85c36219"))
+		(pin "2" (uuid "41372a07-2012-4286-9672-c9683e41a752"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "L1")
 					(unit 1)
 				)
@@ -1176,7 +1477,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "85e83aab-714a-42df-9d49-9f672b82ebb2")
+		(uuid "7550cdd6-09d1-4546-8627-3f3c28a0cef9")
 		(property "Reference" "D2"
 			(at 72.3900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1205,11 +1506,11 @@
 			(at 68.5800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "cb2f6a6f-08eb-475b-83b1-88b36f67581f"))
-		(pin "2" (uuid "d3adf798-3fc6-43e4-828b-65f62be74b02"))
+		(pin "1" (uuid "59155d00-4784-468c-84ca-a8ed81ee3087"))
+		(pin "2" (uuid "46caab54-681b-4891-81d5-180a1db395a7"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "D2")
 					(unit 1)
 				)
@@ -1224,7 +1525,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "acbcb2d6-46ae-4512-bef7-181950d6e064")
+		(uuid "f30aa859-854b-44ba-8790-3165e480963c")
 		(property "Reference" "R3"
 			(at 110.4900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1245,11 +1546,11 @@
 			(at 106.6800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "b2a49425-b08f-440f-a05e-8ad3d9965995"))
-		(pin "2" (uuid "796b6681-354b-4bb8-867b-fd3b4776d6a9"))
+		(pin "1" (uuid "6faf93e9-9451-407f-9a2c-9e6e0fd45516"))
+		(pin "2" (uuid "f0466125-c5ea-45bc-a492-4df0e4c352c6"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "R3")
 					(unit 1)
 				)
@@ -1264,12 +1565,12 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "44485ef3-2786-45a3-a72c-abade367053d")
+		(uuid "2aa9156c-4cdf-4ec0-a3b7-858ee2bd5be1")
 		(property "Reference" "R4"
 			(at 148.5900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
 		)
-		(property "Value" "10k"
+		(property "Value" "22k"
 			(at 148.5900 124.4600 0)
 			(effects (font (size 1.27 1.27)) (justify left))
 		)
@@ -1281,15 +1582,15 @@
 			(at 144.7800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(property "LCSC" "C25744"
+		(property "LCSC" "C25768"
 			(at 144.7800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "ce9b779b-066e-4ae6-aa61-ef2cba8691a8"))
-		(pin "2" (uuid "756b7390-0d9f-4cb0-b7db-460c13f208f9"))
+		(pin "1" (uuid "260f19ff-a967-4a67-8a31-e75376633a81"))
+		(pin "2" (uuid "f94919e0-8e3e-4eeb-b698-30e59c0757a3"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "R4")
 					(unit 1)
 				)
@@ -1304,7 +1605,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "b9e88f6b-4f9a-4d73-bd76-aabedb884393")
+		(uuid "44731054-8689-4b72-83a4-d70e73b2a244")
 		(property "Reference" "R2"
 			(at 186.6900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1325,11 +1626,11 @@
 			(at 182.8800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "12c7c87a-ee37-4639-b9f2-aaef12665ba3"))
-		(pin "2" (uuid "4644a1c2-319c-40f2-a4ce-d01c3d5b8d43"))
+		(pin "1" (uuid "5d40950c-7337-4299-b0da-cecca87141c0"))
+		(pin "2" (uuid "e29c09d2-6cd3-47a2-a628-e903a7e1c7d4"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "R2")
 					(unit 1)
 				)
@@ -1344,7 +1645,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "19f5e920-d69c-47aa-a316-34db24109bcf")
+		(uuid "1c9de87c-dd9c-4863-9402-f03eaae8a5f3")
 		(property "Reference" "C3"
 			(at 224.7900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1365,11 +1666,11 @@
 			(at 220.9800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "0aac508e-0a35-4100-ba97-28953f7963b4"))
-		(pin "2" (uuid "5780ee56-fe2b-40b4-898a-18aafb12c373"))
+		(pin "1" (uuid "43b7f05c-fd62-4ab1-b966-a3539420e596"))
+		(pin "2" (uuid "c94ec15d-e84a-4903-b6dd-0af3be7a22f4"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "C3")
 					(unit 1)
 				)
@@ -1384,7 +1685,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "f0e079c0-213c-42c9-8c51-dc1ab21be8e7")
+		(uuid "5e0da810-2ef0-4148-a470-448f4947bc57")
 		(property "Reference" "C4"
 			(at 262.8900 119.3800 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -1405,22 +1706,151 @@
 			(at 259.0800 121.9200 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "52512c31-7023-44fb-a2b7-93cb5ee700a9"))
-		(pin "2" (uuid "cb3cb16e-dc42-4b31-bf16-8bb38c12a44f"))
+		(pin "1" (uuid "471cce45-8741-4961-ab65-47006ed4d802"))
+		(pin "2" (uuid "b4f25d4b-562d-4957-a968-f317e5b7ad98"))
 		(instances
 			(project "lock"
-				(path "/e1000000-0000-4000-8000-000000000002/93559584-6df4-4ea3-bcbc-16466d18e9f1"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
 					(reference "C4")
 					(unit 1)
 				)
 			)
 		)
 	)
-	(text "Power — BAT 1S Li-ion -> MT3608 boost -> +12V (VSOL).  Boost GATED OFF except during actuation.  PLACED, not wired.\nJ1 BAT 1S (JST-PH): 1 = BAT+   2 = GND   (protected 1S Li-ion pack, 3.0-4.2V).\n   BAT+ ALSO powers U1 directly (MCU sheet) -- there is no LDO; the ATtiny runs on the raw cell.\nU2 MT3608 (SOT-23-6 boost):\n   1 SW  -> L1 / D2 anode        4 EN  <- SOL_BOOST_EN  (R2 100k pulldown = OFF at boot / MCU asleep)\n   2 GND -> GND                  5 IN  <- BAT+  (C3 10uF)\n   3 FB  <- R3/R4 node           6 NC\n   BOOST: BAT+ -> L1 10uH -> SW(1) ; SW -> D2 SS34 -> VSOL(+12V) ; C4 22uF on VSOL.\n   FB divider: VSOL -> R3 200k -> FB -> R4 10k -> GND.  Vout = 0.6*(1 + R3/R4) = 12.6V (trim R3 toward 12V).\nSIZING: MT3608 ~2A switch ~= ~0.5A @12V continuous -> sized for HOLD current + reservoir recharge.\n   A sustained 1A @12V pull-in exceeds this -> use a bigger boost (e.g. TPS61088) + larger reservoir; see DESIGN.md."
+	(symbol
+		(lib_id "Transistor_FET:Q_NMOS_GSD")
+		(at 297.1800 121.9200 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "d92362e1-eb2d-4b45-950e-4133f3fd4d54")
+		(property "Reference" "Q2"
+			(at 300.9900 119.3800 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "AO3400A"
+			(at 300.9900 124.4600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 297.1800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 297.1800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "LCSC" "C20917"
+			(at 297.1800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "MPN" "AO3400A"
+			(at 297.1800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Manufacturer" "AOS"
+			(at 297.1800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "7052ceb9-05c6-43cf-863c-9348a7883bea"))
+		(pin "2" (uuid "ebd862a4-1141-4b18-9075-620cd85c4605"))
+		(pin "3" (uuid "ce31c514-9a54-4144-99d6-abc4b2ec891b"))
+		(instances
+			(project "lock"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
+					(reference "Q2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 335.2800 121.9200 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0f9c62ad-9fa8-4f81-ad9b-5c677d84e136")
+		(property "Reference" "R17"
+			(at 339.0900 119.3800 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "20k"
+			(at 339.0900 124.4600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 335.2800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 335.2800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "LCSC" "C25765"
+			(at 335.2800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "facc5498-d9ad-4ea9-8ce8-2c0cabd47bfb"))
+		(pin "2" (uuid "faa88f42-7fd8-4338-aab3-6b2c407f89aa"))
+		(instances
+			(project "lock"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
+					(reference "R17")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 373.3800 121.9200 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "05df59a0-c6fb-418c-97a7-30a9a40272a7")
+		(property "Reference" "R18"
+			(at 377.1900 119.3800 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "100k"
+			(at 377.1900 124.4600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 373.3800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 373.3800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "LCSC" "C25741"
+			(at 373.3800 121.9200 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "44a21e4c-decb-4e09-bdfe-e181dcc0d32c"))
+		(pin "2" (uuid "aeb85ba9-3986-4505-94e8-423d57ebd7d9"))
+		(instances
+			(project "lock"
+				(path "/e1000000-0000-4000-8000-000000000002/2e130db5-a926-472e-84a7-97cbb2425133"
+					(reference "R18")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(text "Power — BAT 1S Li-ion -> MT3608 boost -> +12V (VSOL).  Boost GATED OFF except during actuation.  PLACED, not wired.\nJ1 BAT 1S (JST-PH): 1 = BAT+   2 = GND   (protected 1S Li-ion pack, 3.0-4.2V).\n   BAT+ ALSO powers U1 directly (MCU sheet) -- there is no LDO; the ATtiny runs on the raw cell.\nU2 MT3608 (SOT-23-6 boost):\n   1 SW  -> L1 / D2 anode        4 EN  <- SOL_BOOST_EN  (R2 100k pulldown = OFF at boot / MCU asleep)\n   2 GND -> GND                  5 IN  <- BAT+  (C3 10uF)\n   3 FB  <- R3/R4 node           6 NC\n   BOOST: BAT+ -> L1 10uH -> SW(1) ; SW -> D2 SS34 -> VSOL(+12V) ; C4 22uF on VSOL.\n   FB divider (FIRMWARE-SELECTABLE Vout): VSOL -> R3 200k -> FB -> R4 22k -> GND  => 6V (default).\n   BOOST_VSEL (U1 PA1) -> Q2 NMOS switches R17 20k in parallel with R4 (=>~10.5k) => ~12V.  R18 100k pulldown = default 6V.\n   Sequence: set BOOST_VSEL, THEN SOL_BOOST_EN (boost comes up at the chosen rail; no live 12->6 dip onto a servo).\n   6V = servo rail ; 12V = solenoid.  (Replaces the old manual R3 swap.)\nSIZING: MT3608 ~2A switch ~= ~0.5A @12V continuous -> sized for HOLD current + reservoir recharge.\n   A sustained 1A @12V pull-in exceeds this -> use a bigger boost (e.g. TPS61088) + larger reservoir; see DESIGN.md."
 		(exclude_from_sim no)
 		(at 12.00 120.00 0)
 		(effects (font (size 1.5 1.5)) (justify left top))
-		(uuid "e984b750-3a4b-4ff9-8a2c-c23d5fe8cb47")
+		(uuid "c7bf0bee-4d3a-44f4-90e9-ae9770684df8")
 	)
 	(sheet_instances
 		(path "/"
