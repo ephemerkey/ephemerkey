@@ -25,6 +25,16 @@ gitignored/regenerable; this `fab/` folder is the committed snapshot.
 Upload the zip to <https://cart.jlcpcb.com/quote>, enable PCB Assembly, attach
 BOM + CPL.
 
+## BOM/CPL format (JLCPCB match)
+- BOM lists every designator **individually** (`--ref-range-delimiter ''`) — JLCPCB
+  can't expand ranges like `R18-R20`, which would silently drop those SMD parts.
+- CPL is **SMD-only, DNP-excluded** (`--smd-only --exclude-dnp`) so it matches the
+  BOM's assembled set. SMD BOM↔CPL parts reconcile exactly.
+- **Through-hole connectors J2–J8 are intentionally NOT in the CPL** (they're THT,
+  not SMT-placed). JLCPCB will warn "J2–J8 won't be assembled" — expected:
+  **hand-solder the connectors**, or enable THT assembly (the JST parts have LCSC;
+  the J4/J5/J8 pin headers don't).
+
 ## State at capture — READ BEFORE ORDERING
 This is a **working snapshot, not a signed-off release.** Known-open items:
 

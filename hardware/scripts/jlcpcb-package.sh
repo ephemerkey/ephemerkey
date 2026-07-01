@@ -104,6 +104,7 @@ RAW_CPL="$OUT_DIR/${NAME}-CPL-raw.csv"
     --side both \
     --use-drill-file-origin \
     --smd-only \
+    --exclude-dnp \
     "$PCB" >/dev/null
 
 # Translate KiCad's columns (Ref,Val,Package,PosX,PosY,Rot,Side) to JLCPCB's
@@ -137,6 +138,8 @@ echo "[jlcpcb] generating BOM"
     --fields '${ITEM_NUMBER},Reference,Value,Footprint,${QUANTITY},LCSC,MPN,Manufacturer' \
     --labels "Item,Designator,Comment,Footprint,Qty,LCSC Part #,MPN,Manufacturer" \
     --group-by 'Value,Footprint' \
+    --ref-delimiter ',' \
+    --ref-range-delimiter '' \
     --exclude-dnp \
     "$SCH" >/dev/null
 
