@@ -47,8 +47,12 @@ SOT236 = "Package_TO_SOT_SMD:SOT-23-6"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOD123 = "Diode_SMD:D_SOD-123"
 BTN = "ephemerkey:SW_Push_1P1T_XKB_TS-1187A"
-# MLT-8530 has no bundled land pattern; CUI CMT-8504 (8.5mm SMD magnetic buzzer)
-# is the closest KiCad footprint -- VERIFY pads vs the MLT-8530 datasheet at layout.
+# MLT-8530 has no bundled land pattern; CUI CMT-8504 (4-corner-pad 8.5mm SMD buzzer)
+# is a VERIFIED-compatible placeholder (checked vs MLT-8530 datasheet 5.2):
+#   pad1/pad2 (top-left/bottom-left) = MLT +Lead/-Lead exactly; pad3/pad4 land on the
+#   MLT mechanical dummy pads (left unconnected -- optionally tie to GND on the PCB).
+#   Pads 2.5mm vs datasheet 2.3mm and centers +/-3.5 vs +/-3.55mm = generous, harmless.
+# TODO(optional): swap for an exact ephemerkey:MLT-8530 footprint for a clean release.
 BUZZER = "Buzzer_Beeper:MagneticBuzzer_CUI_CMT-8504-100-SMT"
 USBC_VERT = "Connector_USB:USB_C_Receptacle_GCT_USB4085"   # vertical, 16-pin USB2.0
 
