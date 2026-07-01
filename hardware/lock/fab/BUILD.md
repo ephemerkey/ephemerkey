@@ -28,12 +28,19 @@ BOM + CPL.
 ## BOM/CPL format (JLCPCB match)
 - BOM lists every designator **individually** (`--ref-range-delimiter ''`) — JLCPCB
   can't expand ranges like `R18-R20`, which would silently drop those SMD parts.
-- CPL is **SMD-only, DNP-excluded** (`--smd-only --exclude-dnp`) so it matches the
-  BOM's assembled set. SMD BOM↔CPL parts reconcile exactly.
-- **Through-hole connectors J2–J8 are intentionally NOT in the CPL** (they're THT,
-  not SMT-placed). JLCPCB will warn "J2–J8 won't be assembled" — expected:
-  **hand-solder the connectors**, or enable THT assembly (the JST parts have LCSC;
-  the J4/J5/J8 pin headers don't).
+- CPL is **DNP-excluded** (`--exclude-dnp`) and drops mounting holes (H*) + the
+  hand-solder list; the BOM applies the same hand-solder exclusion. **BOM and CPL
+  now match exactly (42 = 42 parts, no diffs)** — no JLCPCB part-mismatch warnings.
+
+## Assembly plan (JLCPCB **Standard** tier)
+- **JLC-assembled (SMD + THT):** all SMD, plus the **JST connectors** J2 (I2C),
+  J3 (solenoid), J6/J7 (hall) — they carry LCSC and are placed via **THT assembly**.
+- **Hand-soldered (excluded from BOM+CPL):** the 1×3 pin headers **J4** (UPDI),
+  **J5 / J8** (servo) — no LCSC. Listed in `hardware/lock/lock-handsolder.txt`.
+- **Use the *Standard* assembly tier, not Economic:**
+  - **C5 / C8 — 220 µF 25 V (C2918361, RVT1E221M0607) is NOT available for
+    Economic assembly** → Economic can't place it. Standard tier stocks it.
+  - THT assembly (the JST connectors) also requires Standard tier.
 
 ## State at capture — READ BEFORE ORDERING
 This is a **working snapshot, not a signed-off release.** Known-open items:
@@ -42,16 +49,14 @@ This is a **working snapshot, not a signed-off release.** Known-open items:
   through-hole GND pins of **J6/J7** (hall connectors) — mild (pads still connect
   to GND); fix by setting those pads to solid zone connection or widening the
   thermal spoke.
-- **BOM:** all actives + passives carry an LCSC. **J4 / J5 / J8** (UPDI + servo
-  1×3 headers, through-hole) have **no LCSC** — mark *Do-not-place* for assembly
-  or hand-solder.
-- **CPL** lists the 3 DNP parts (**R14, R9, C7**); the BOM correctly omits them.
-  JLC skips the unmatched CPL rows (optional: `--exclude-dnp` on the pos export).
+- **THT rotation:** verify the JST connector rotations in the CPL against JLCPCB's
+  convention at review (JST/THT parts sometimes need a rotation offset).
 - **ERC (schematic hygiene, does not affect these outputs):** no-connect flags
   still needed on PA3/PB5/PC0–PC2; PWR_FLAGs on VCC + GND.
 
-## DNP (not assembled)
-`R14` (VSERVO source alt), `R9` + `C7` (drain snubber).
+## DNP (not assembled) / hand-solder
+- **DNP** (excluded from BOM+CPL): `R14` (VSERVO source alt), `R9` + `C7` (drain snubber).
+- **Hand-solder** (excluded from BOM+CPL, fitted by hand): `J4`, `J5`, `J8`.
 
 ## Regenerate
 `cd hardware && make jlc-lock` → rebuilds `hardware/lock/jlcpcb/` + the zip, then

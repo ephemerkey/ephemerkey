@@ -1,0 +1,10 @@
+# Designators assembled by hand (NOT by JLCPCB) — excluded from the assembly
+# BOM + CPL so the two match. One per line; '#' comments allowed.
+#
+# The pin headers have no LCSC part and are fitted by hand:
+J4   # UPDI programming header (1x3)
+J5   # servo output 1 (1x3)
+J8   # servo output 2 (1x3)
+#
+# The JST connectors (J2 I2C, J3 solenoid, J6/J7 hall) DO have LCSC numbers and
+# are left in the package for JLCPCB THT assembly — do not list them here.
