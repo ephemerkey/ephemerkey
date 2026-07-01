@@ -4482,7 +4482,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C2918361"
+		(property "LCSC" "C4747974"
 			(at 86.36 59.69 0)
 			(hide yes)
 			(show_name no)
@@ -4493,7 +4493,7 @@
 				)
 			)
 		)
-		(property "MPN" "RVT1E221M0607"
+		(property "MPN" "RST220UF25V019"
 			(at 86.36 59.69 0)
 			(hide yes)
 			(show_name no)
@@ -4504,7 +4504,7 @@
 				)
 			)
 		)
-		(property "Manufacturer" "Rubycon-alt"
+		(property "Manufacturer" "generic"
 			(at 86.36 59.69 0)
 			(hide yes)
 			(show_name no)
@@ -5253,7 +5253,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C2918361"
+		(property "LCSC" "C4747974"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -5264,7 +5264,7 @@
 				)
 			)
 		)
-		(property "MPN" "RVT1E221M0607"
+		(property "MPN" "RST220UF25V019"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -5275,7 +5275,7 @@
 				)
 			)
 		)
-		(property "Manufacturer" "Rubycon-alt"
+		(property "Manufacturer" "generic"
 			(at 231.14 48.26 0)
 			(hide yes)
 			(show_name no)

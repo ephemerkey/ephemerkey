@@ -162,7 +162,7 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
     ],
     small=[
         dict(ref="C5", lib_id="Device:C_Polarized", value="220uF 25V", fp=ELEC637,
-             lcsc="C2918361", mpn="RVT1E221M0607", mfr="Rubycon-alt"),  # reservoir
+             lcsc="C4747974", mpn="RST220UF25V019", mfr="generic"),  # reservoir
         C("C6", "22uF", C1206),                           # VSOL HF bypass
         dict(ref="D3", lib_id="Device:D_Schottky", value="SS34", fp=SMA,
              lcsc="C8678", mpn="SS34", mfr="MDD"),               # coil flyback
@@ -177,7 +177,7 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
         R("R15", "1k"),                                   # servo signal series
         R("R16", "10k"),                                  # servo signal idle pulldown
         dict(ref="C8", lib_id="Device:C_Polarized", value="220uF 25V", fp=ELEC637,
-             lcsc="C2918361", mpn="RVT1E221M0607", mfr="Rubycon-alt"),  # VSERVO bulk
+             lcsc="C4747974", mpn="RST220UF25V019", mfr="generic"),  # VSERVO bulk
         # VSERVO high-side load switch (P-FET) + interlock to BOOST_VSEL
         dict(ref="Q3", lib_id="Transistor_FET:Q_PMOS_GSD", value="AO3401A",
              fp=SOT23, lcsc="C15127", mpn="AO3401A", mfr="AOS"),   # servo high-side P-FET

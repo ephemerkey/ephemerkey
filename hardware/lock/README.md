@@ -62,7 +62,7 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 | Q3 | AO3401A | P-FET (servo high-side load switch) | C15127 | **Basic** | SOT-23 |
 | D2,D3 | SS34 | Schottky 40 V/3 A | C8678 | **Basic** | SMA |
 | L1 | FNR6045S100MT | 10 µH power inductor | C168076 | ext | 6×6 mm |
-| C5,C8 | 220 µF 25 V | reservoir / VSERVO bulk (electrolytic) | C2918361 | ext | Ø6.3×7.7 |
+| C5,C8 | 220 µF 25 V | reservoir / VSERVO bulk (electrolytic) | C4747974 | ext | Ø6.3×7.7 |
 | C4,C6 | 22 µF 25 V | boost out / VSOL bypass | C12891 | **Basic** | 1206 |
 | C3 | 10 µF 25 V | boost in | C15850 | **Basic** | 0805 |
 | C1,C2,C7,C9,C10 | 100 nF / 1 µF / 1 nF | decouple / hall debounce / snubber(DNP) | C1525/C29266 | **Basic** | 0402 |

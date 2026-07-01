@@ -37,10 +37,12 @@ BOM + CPL.
   J3 (solenoid), J6/J7 (hall) — they carry LCSC and are placed via **THT assembly**.
 - **Hand-soldered (excluded from BOM+CPL):** the 1×3 pin headers **J4** (UPDI),
   **J5 / J8** (servo) — no LCSC. Listed in `hardware/lock/lock-handsolder.txt`.
-- **Use the *Standard* assembly tier, not Economic:**
-  - **C5 / C8 — 220 µF 25 V (C2918361, RVT1E221M0607) is NOT available for
-    Economic assembly** → Economic can't place it. Standard tier stocks it.
-  - THT assembly (the JST connectors) also requires Standard tier.
+- **Assembly tier:** the JST connectors are **through-hole**, so this order needs
+  the **Standard** assembly tier (Economic is SMD-only, top-side). All SMD parts
+  are Economic-eligible on their own.
+  - **C5 / C8 — 220 µF 25 V uses `C4747974` (RST220UF25V019)**, which *is* available
+    for Economic assembly (swapped from `C2918361`, which was not — same D6.3×L7.7 mm
+    body). So the cap no longer forces the tier; only the THT connectors do.
 
 ## State at capture — READ BEFORE ORDERING
 This is a **working snapshot, not a signed-off release.** Known-open items:
