@@ -2,7 +2,7 @@
 	(version 20260306)
 	(generator "eeschema")
 	(generator_version "10.0")
-	(uuid "fb755fc8-e706-4c20-a0e5-87f6f04a5a12")
+	(uuid "b993fc23-fdb1-44a1-bc5c-d94dda7b5d64")
 	(paper "A3")
 	(title_block
 		(title "ephemerkey — Accelerometer (LIS3DH)")
@@ -709,7 +709,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "d2781e0c-4877-4407-99ef-fa256d74d4df")
+		(uuid "6bce40cc-6328-4c6d-a546-aa73a5b8ea30")
 		(property "Reference" "U5"
 			(at 34.2900 38.1000 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -738,25 +738,25 @@
 			(at 30.4800 40.6400 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "2a4adb4b-e67f-4b08-afef-a661cd3e03f0"))
-		(pin "2" (uuid "7a91847b-4e0e-41be-b2ff-e2d66de2d646"))
-		(pin "3" (uuid "01a77c7e-c541-4ddc-971f-f2d24f71fa0a"))
-		(pin "4" (uuid "cb515c98-1092-4309-84f8-522ff093c0c4"))
-		(pin "5" (uuid "559b571c-4207-41fe-993d-be92ec280848"))
-		(pin "6" (uuid "48972b03-3768-43c7-a3aa-348ac0a83056"))
-		(pin "7" (uuid "c2cc63ef-b439-4d10-97ba-7ff8b0548e5d"))
-		(pin "8" (uuid "5d64282b-922b-401b-97d0-eb3752327826"))
-		(pin "9" (uuid "04ec4e4f-a3c9-480d-824f-e4a82a2b9bb3"))
-		(pin "10" (uuid "5093a403-a7e3-43ae-ab0a-1dbc9ae84cda"))
-		(pin "11" (uuid "7e770555-a47f-44b4-b014-56d667ce869c"))
-		(pin "12" (uuid "96ddbfe8-d900-4ea2-afa1-023855009e52"))
-		(pin "13" (uuid "7b4d47ad-adb0-45b3-a748-969ac62788ff"))
-		(pin "14" (uuid "a9e49512-ff6b-43c4-a36e-dfa11ef24d21"))
-		(pin "15" (uuid "8714ada2-7bbc-4aba-bfff-d9e1527e9c0d"))
-		(pin "16" (uuid "011de2b7-a4e5-45bb-870b-e270c72d9d46"))
+		(pin "1" (uuid "27baf491-a8fd-4ddd-ad58-91b5779c572c"))
+		(pin "2" (uuid "991de8c5-6f84-4e73-8039-faecd369ff87"))
+		(pin "3" (uuid "006cd07d-a72c-4519-abb4-958f19c77798"))
+		(pin "4" (uuid "7e84d8a3-063a-4d7c-bb26-606b22514f82"))
+		(pin "5" (uuid "9c3bcfb5-9539-4cbe-93e4-0f2f328a4b14"))
+		(pin "6" (uuid "16cd269b-e4da-4aea-a6e1-95d11d24e39b"))
+		(pin "7" (uuid "941ec102-01fd-4773-8a9b-94a461ce8450"))
+		(pin "8" (uuid "8fea8b18-a021-40f6-a9a8-5a6da3572b4f"))
+		(pin "9" (uuid "e6db6a12-348c-43d6-837f-334a5a33e96f"))
+		(pin "10" (uuid "ffcbb359-7603-4506-84e3-d2f090b01698"))
+		(pin "11" (uuid "3bee1c36-2e4a-4109-84a0-a60eaea54bf4"))
+		(pin "12" (uuid "2bb85621-fc2a-4358-b97f-c0e30d802875"))
+		(pin "13" (uuid "14a47e99-ce9e-45a7-83d1-005eee2c28fd"))
+		(pin "14" (uuid "27cfe4b6-730e-40bd-8d42-601f9543ba81"))
+		(pin "15" (uuid "839a94f0-f810-41de-bb21-f5a4b2b81a60"))
+		(pin "16" (uuid "3ef451dc-1df2-44fe-b9d6-79a7561765ba"))
 		(instances
 			(project "ephemerkey"
-				(path "/e1000000-0000-4000-8000-000000000001/fb755fc8-e706-4c20-a0e5-87f6f04a5a12"
+				(path "/e1000000-0000-4000-8000-000000000001/b993fc23-fdb1-44a1-bc5c-d94dda7b5d64"
 					(reference "U5")
 					(unit 1)
 				)
@@ -771,7 +771,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "289fbf70-3538-4859-aaae-c93b95d2951e")
+		(uuid "555ac5cc-ccec-4675-91f8-c4a89934c60e")
 		(property "Reference" "C23"
 			(at 72.3900 38.1000 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -792,11 +792,11 @@
 			(at 68.5800 40.6400 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "736e4349-e98b-4831-827c-e446d3eebc3f"))
-		(pin "2" (uuid "4a692434-55f7-46d9-b1fa-ddedb0a7ab9a"))
+		(pin "1" (uuid "c81fce04-ecae-4ad7-b14d-1f9b550d8b3d"))
+		(pin "2" (uuid "699420b4-2805-497d-9d9f-5484561ed24a"))
 		(instances
 			(project "ephemerkey"
-				(path "/e1000000-0000-4000-8000-000000000001/fb755fc8-e706-4c20-a0e5-87f6f04a5a12"
+				(path "/e1000000-0000-4000-8000-000000000001/b993fc23-fdb1-44a1-bc5c-d94dda7b5d64"
 					(reference "C23")
 					(unit 1)
 				)
@@ -811,7 +811,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "664cd144-b0c0-4181-9181-c0d05f8cc0a0")
+		(uuid "cc5753de-828b-458a-8651-7c19bcf802a0")
 		(property "Reference" "C24"
 			(at 110.4900 38.1000 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -832,11 +832,11 @@
 			(at 106.6800 40.6400 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "5f81d5a7-c45a-4262-8311-b76a4cd64cac"))
-		(pin "2" (uuid "3f23440b-2477-4ce5-8faa-a05f44931422"))
+		(pin "1" (uuid "9156897d-4616-45a2-aedf-83bb174654fd"))
+		(pin "2" (uuid "0e171245-488a-431d-8a1d-6d736484d11e"))
 		(instances
 			(project "ephemerkey"
-				(path "/e1000000-0000-4000-8000-000000000001/fb755fc8-e706-4c20-a0e5-87f6f04a5a12"
+				(path "/e1000000-0000-4000-8000-000000000001/b993fc23-fdb1-44a1-bc5c-d94dda7b5d64"
 					(reference "C24")
 					(unit 1)
 				)
@@ -851,7 +851,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "86f6b02e-6fc5-4160-b437-ba3b66e85a9d")
+		(uuid "a65d412b-cfbc-43c5-8d30-d0645328f1f6")
 		(property "Reference" "R9"
 			(at 148.5900 38.1000 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -872,11 +872,11 @@
 			(at 144.7800 40.6400 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "d5053831-ea3e-4c3c-a647-fb93d306dd05"))
-		(pin "2" (uuid "b58b6f7f-18db-4561-afe3-df97f7a05757"))
+		(pin "1" (uuid "767949c4-8c2e-4622-8156-4422740ee14d"))
+		(pin "2" (uuid "6d579e9f-b2c6-456f-b10a-22c4a96c8b9c"))
 		(instances
 			(project "ephemerkey"
-				(path "/e1000000-0000-4000-8000-000000000001/fb755fc8-e706-4c20-a0e5-87f6f04a5a12"
+				(path "/e1000000-0000-4000-8000-000000000001/b993fc23-fdb1-44a1-bc5c-d94dda7b5d64"
 					(reference "R9")
 					(unit 1)
 				)
@@ -891,7 +891,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "fe4c0f94-de0b-4018-a69e-362d7e2730f8")
+		(uuid "6b34989b-6f4e-4052-92ee-2a440c0d51cd")
 		(property "Reference" "R10"
 			(at 186.6900 38.1000 0)
 			(effects (font (size 1.27 1.27)) (justify left))
@@ -912,11 +912,11 @@
 			(at 182.8800 40.6400 0)
 			(effects (font (size 1.27 1.27))) (hide yes)
 		)
-		(pin "1" (uuid "bc955e41-cd6f-4ea6-bb66-19c34095a96c"))
-		(pin "2" (uuid "5a4d4982-3d6e-4134-b793-cf9bd84cd70c"))
+		(pin "1" (uuid "9d61a01c-03a7-47a0-9db8-72dd079699e8"))
+		(pin "2" (uuid "faf2038e-50d0-4b24-9f44-9f107b1f0e76"))
 		(instances
 			(project "ephemerkey"
-				(path "/e1000000-0000-4000-8000-000000000001/fb755fc8-e706-4c20-a0e5-87f6f04a5a12"
+				(path "/e1000000-0000-4000-8000-000000000001/b993fc23-fdb1-44a1-bc5c-d94dda7b5d64"
 					(reference "R10")
 					(unit 1)
 				)
@@ -927,7 +927,7 @@
 		(exclude_from_sim no)
 		(at 12.00 56.64 0)
 		(effects (font (size 1.5 1.5)) (justify left top))
-		(uuid "0659b786-e5a6-49fe-b979-a5d240cf0592")
+		(uuid "302638fa-560f-4459-9038-bb9b3f903faf")
 	)
 	(sheet_instances
 		(path "/"

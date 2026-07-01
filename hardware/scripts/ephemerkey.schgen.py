@@ -54,7 +54,7 @@ BTN = "ephemerkey:SW_Push_1P1T_XKB_TS-1187A"
 #   Pads 2.5mm vs datasheet 2.3mm and centers +/-3.5 vs +/-3.55mm = generous, harmless.
 # TODO(optional): swap for an exact ephemerkey:MLT-8530 footprint for a clean release.
 BUZZER = "Buzzer_Beeper:MagneticBuzzer_CUI_CMT-8504-100-SMT"
-USBC_VERT = "Connector_USB:USB_C_Receptacle_GCT_USB4085"   # vertical, 16-pin USB2.0
+USBC_VERT = "Connector_USB:USB_C_Receptacle_G-Switch_GT-USB-7051x"  # vertical SMT, 16-pin USB2.0
 
 # JLCPCB LCSC for the common 0402 Basic passives
 RLCSC = {"5.1k": "C25905", "4.7k": "C25900", "10k": "C25744",
@@ -138,7 +138,7 @@ PSU = dict(name="PSU", file="psu.kicad_sch",
              lcsc="C1518762", mpn="TPS63900DSKR", mfr="Texas Instruments"),
         dict(ref="J5", lib_id="Connector:USB_C_Receptacle_USB2.0_16P",
              value="USB-C (vert)", fp=USBC_VERT,
-             lcsc="C7095263", mpn="USB4085-GF-A", mfr="GCT"),   # 2nd port, same bus
+             lcsc="C2843970", mpn="GT-USB-7051A", mfr="G-Switch"),   # 2nd port, same bus (upright)
     ],
     small=[
         dict(ref="U3", lib_id="Power_Protection:USBLC6-2SC6", value="USBLC6-2SC6",
@@ -241,7 +241,7 @@ DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)
 
 PSU["note"] = (12, 158, """Power — pinout (USB-C -> charge -> load-share -> buck-boost).  PLACED, not wired.
 J3  USB-C 16P:   VBUS -> VBUS_5V;  GND -> GND;  CC1 -> R4 5.1k -> GND;  CC2 -> R5 5.1k -> GND
-J5  USB-C 16P (VERTICAL, GCT USB4085, 2nd port SAME BUS):  VBUS -> VBUS_5V (|| J3);  GND -> GND;
+J5  USB-C 16P (VERTICAL/upright SMT, G-Switch GT-USB-7051A, 2nd port SAME BUS):  VBUS -> VBUS_5V (|| J3);  GND -> GND;
       D+/D- -> same D+/D- net as J3 (through U3 ESD);  CC1 -> R15 5.1k -> GND;  CC2 -> R16 5.1k -> GND.
       Its own CC pulldowns (per receptacle).  Use one port at a time -- don't plug two sources at once.
                  D+ -> U3 -> USB_DP (PA12);  D- -> U3 -> USB_DM (PA11);  SBU1/2 = NC;  SHIELD -> GND
