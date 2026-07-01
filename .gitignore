@@ -34,3 +34,6 @@ __pycache__/
 *.pyc
 *.lck
 ~*.lck
+
+# kicad-happy analysis cache (regenerable)
+hardware/*/analysis/

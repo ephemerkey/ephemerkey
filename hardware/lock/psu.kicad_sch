@@ -1846,7 +1846,7 @@
 		)
 		(uuid "ff07a8eb-28f2-4d69-a3dc-027cd651d91a")
 	)
-	(global_label "BOOST_VEL"
+	(global_label "BOOST_VSEL"
 		(shape input)
 		(at 129.54 87.63 180)
 		(fields_autoplaced yes)
@@ -1858,7 +1858,7 @@
 		)
 		(uuid "437609ad-3cf0-4757-8956-066bbeab7743")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 116.2134 87.63 0)
+			(at 115.0039 87.63 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects

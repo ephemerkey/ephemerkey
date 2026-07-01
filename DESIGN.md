@@ -263,19 +263,26 @@ a standard 4-pin I2C cable), straight-through to the lock's J2:
 
 | J2 pin | net | dir | function |
 |--------|-----|-----|----------|
-| 1 | GND | — | common ground |
-| 2 | VCC | +3V3 (here) | host/bus reference; **No-Connect on the lock** — don't bridge the two battery rails |
+| 1 | GND | — | common ground / actuation return |
+| 2 | VSYS | out | **battery/system rail — powers the lock** (the lock has no own cell) |
 | 3 | LOCK_SDA | bidir (PB0) | I2C data |
 | 4 | LOCK_SCL | out (PB1) | I2C clock — ephemerkey is master; also the lock's wake edge |
 
-There is **no separate wake/trigger line** — the lock sleeps in power-down and
-wakes on the first I2C START (a pin-change interrupt on SCL), so we don't mix a
-discrete "button"-style input onto the bus. The master sends a dummy/wake transfer,
+The lock is **powered from ephemerkey** over this connector (J2.2 = VSYS, the
+load-share/battery rail); it carries no local battery. There is **no separate
+wake/trigger line** — the lock sleeps in power-down and wakes on the first I2C
+START (a pin-change interrupt on SCL). The master sends a dummy/wake transfer,
 then retries once the target is up.
 
-The I2C pull-ups (≈4.7 kΩ, R11/R12) sit on **this** board to +3V3 (master side) so
-the bus idles at 3.3 V; the lock's BAT-powered (≤4.2 V) open-drain target pins only
-sink, so there is no 3.3 V/VBAT cross-domain conflict. Keep the cable short (100 kHz).
+**Current caveat:** the lock's logic *and* its boost/actuator draw come through
+this cable. A 12 V solenoid pull-in is ~3–4 A from VSYS — beyond a JST-PH contact
+(~2 A) and ephemerkey's load-share path. Keep actuation to the **6 V servo** / low
+duty buffered by the lock's reservoir caps, or add a heavier dedicated power feed.
+
+The I2C pull-ups (≈4.7 kΩ, R11/R12) stay on **ephemerkey** to **+3V3** — the STM32
+PB0/PB1 are not >3.6 V tolerant, so the bus must not be pulled to VSYS. The lock's
+open-drain target sinks fine, and its VIH (~0.7·VSYS) is met by the 3.3 V idle level
+across the discharge curve. Keep the cable short (100 kHz).
 
 **Register interface + authentication (firmware HMAC, no secure element).** The lock
 exposes `STATUS` (read), `NONCE` (read), and `COMMAND` (write) registers; a pairing
@@ -326,7 +333,8 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
   MCU may still gate VCC via PA8.
 - **Accel:** LIS3DHTR on I2C1, INT1 wake / INT2 tamper.
 - **Time base:** STM32 RTC w/ LSE crystal, GNSS-disciplined.
-- **Code output:** UART line + open-drain CODE_VALID strobe.
+- **Code output / lock link:** authenticated I2C (ephemerkey = master) on J2, which
+  also carries VSYS to power the companion lock. See § Code Output Interface.
 
 ## Open Questions
 

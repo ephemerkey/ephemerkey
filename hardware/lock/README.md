@@ -26,13 +26,16 @@ on-canvas note that is the wiring spec for the eeschema phase. Regenerate
 4. On success: enable the boost, run the **peak-and-hold** solenoid profile,
    then drop the rail and go back to sleep.
 
-Everything (MCU + boost + driver) runs from a **single 1S Li-ion cell**.
+Everything (MCU + boost + driver) is **powered from ephemerkey over the I2C
+connector** (J2.2 = VSYS, ephemerkey's ~3.0–4.7 V battery/system rail). The lock
+carries **no local battery** (J1 removed). See the *current caveat* under the
+interface section — a 12 V solenoid pull-in draws several amps through that cable.
 
 ## Architecture
 
 ```
- BAT 1S Li-ion (3.0–4.2V) ─┬─────────────────────────► U1 ATtiny1616 VCC   (direct, NO LDO; ~0.1µA sleep)
-   (JST-PH, J1)            │                            │  PA5 SOL_PWM ─┐   PB0/PB1 I2C ── J2 (target; key=master)
+ VSYS from ephemerkey ──┬─────────────────────────────► U1 ATtiny1616 VCC   (direct, NO LDO; ~0.1µA sleep)
+   (J2.2, I2C connector) │                            │  PA5 SOL_PWM ─┐   PB0/PB1 I2C ── J2 (target; key=master)
                            │                            │  PA6 SOL_BOOST_EN  wake-on-I2C: SCL START (no wake line)
                            │   SOL_BOOST_EN ──► EN       │  PA0 UPDI ─────── J4 (program)
                            └─► U2 MT3608 boost ──► +12V (VSOL) ─┬─ C5 220µF + C6 22µF  (reservoir)
@@ -70,8 +73,8 @@ Sheets: **MCU** (`mcu.kicad_sch`) · **PWR** (`psu.kicad_sch`) · **DRV** (`drv.
 | R16,R21,R22,R23,R25 | 10 k | servo pulldowns/series, hall pull-ups | C25744 | **Basic** | 0402 |
 | R5 | 100 Ω | gate series | C106232 | ext* | 0402 |
 | R1,R15,R24 | 1 k | status LED / servo signal series | C11702 | **Basic** | 0402 |
-| D1 | LED green | status | C160479 | ext | 0402 |
-| J1,J3 | JST-PH 2-pin | battery / solenoid | C173752 | ext | PH 2.0 |
+| D1 | LED green | status (driven by **PC3**) | C160479 | ext | 0402 |
+| J3 | JST-PH 2-pin | solenoid | C173752 | ext | PH 2.0 |
 | J2 | JST-PH 4-pin RA (S4B-PH-K) | I2C link (right-angle) | C157926 | ext | PH 2.0 RA |
 | J4 | pin header 1×3 | UPDI program | — | — | 1×3 |
 | J5,J8 | pin header 1×3 | servo outputs (S/V+/GND), DNP unless servo build | — | — | 1×3 |
@@ -119,17 +122,17 @@ boost = a single voltage). Firmware drives three lines:
 | Mode | BOOST_VSEL | SERVO_PWR_EN | Actuator |
 |------|-----------|--------------|----------|
 | Solenoid | 12 V | off (interlock-forced) | Q1/D3/J3 peak-and-hold |
-| Servo, 6 V | 6 V | on | J5 servo, VSERVO ← VSOL (`R14`) |
-| Servo, 1S | 6 V (boost can be off) | on | J5 servo, VSERVO ← VBAT (`R13`) |
+| Servo, 6 V | 6 V | on | J5 servo, VSERVO ← VSOL (`R13`, populated) |
+| Servo, direct | boost off | on | J5 servo, VSERVO ← VSYS (`R14`, DNP alt) |
 
 - **J5 / J8** — two 3-pin RC-servo outputs (`1=SIG, 2=V+ (VSERVO), 3=GND`), e.g. a
   dual-latch lock. `SERVO_SIG` (PB2/TCA0) and `SERVO_SIG2` (PB4, software-timed);
   both share the `VSERVO` rail and the load-switch/interlock. MT3608 ~1 A @ 6 V —
   drive them sequentially, or upsize C5/C8 for simultaneous travel.
-- **VSERVO source** — fit **exactly one** 0 Ω: `R13 = VBAT` (1S) or `R14 = VSOL`
-  (6 V from the boost). **Never both.** C8 (220 µF) buffers servo inrush; MT3608
-  sources ~1 A @ 6 V — fine for brief moves.
-- `SERVO_SIG` is VBAT-level logic, accepted by typical servos, referenced to GND.
+- **VSERVO source** — fit **exactly one** 0 Ω: `R13 = VSOL` (6 V from the boost —
+  the populated default) or `R14 = VSYS` (servo direct off the connector rail,
+  ~3–4.7 V). **Never both.** C8 (220 µF) buffers servo inrush.
+- `SERVO_SIG` is VSYS-level logic (~3–4.7 V), accepted by typical servos, GND-referenced.
 
 ## Authenticated digital interface + Firmware plan
 
@@ -139,16 +142,21 @@ a standard 4-pin I2C cable, straight-through):
 
 | Pin | lock (this board, target) | ephemerkey (key, master) |
 |-----|---------------------------|--------------------------|
-| 1 | GND | GND |
-| 2 | VCC = **No-Connect** (self-powered) | +3V3 (host reference) |
+| 1 | GND (+ actuation return) | GND |
+| 2 | **VCC ← powers the lock** (VSYS in) | **VSYS** (battery/system rail out) |
 | 3 | `SDA` ↔ PB1 | `LOCK_SDA` (PB0) |
 | 4 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PB1) |
 
-Bus pull-ups live on **ephemerkey** (master) to its 3.3 V — not on this board (the
-lock runs at VBAT; master-side pull-ups avoid the cross-domain). The lock is the
-**target** at addr 0x60 with **no separate wake line** — it wakes from power-down on
-the first I2C START (a pin-change interrupt on SCL), so we don't mix a discrete
-"button"-style input with the bus.
+The lock has **no local battery** — its VCC (and the boost/actuator draw) comes in
+on J2.2 from ephemerkey's VSYS rail. **Current caveat:** a 12 V solenoid pull-in is
+~3–4 A from VSYS, beyond a JST-PH contact (~2 A) and ephemerkey's load-share path —
+favor the 6 V servo / low-duty buffered by C5/C8, or run a heavier dedicated feed.
+The I2C pull-ups live on ephemerkey at +3V3 (its PB0/PB1 aren't >3.6 V tolerant, so
+the bus must not be pulled to VSYS). The lock (running at VSYS) reads the 3.3 V idle
+level fine across the discharge curve. The lock is the **target** at addr 0x60 with
+**no separate wake line** — it wakes from power-down on the first I2C START (a
+pin-change interrupt on SCL), so we don't mix a discrete "button"-style input with
+the bus.
 
 Authentication is **firmware HMAC** — no secure element. A pairing secret lives
 in flash on **both** boards (separate from ephemerkey's TOTP secret).

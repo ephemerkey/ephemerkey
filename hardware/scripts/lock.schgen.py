@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Regenerate the companion lock-board schematic from this manifest.
+"""Companion lock-board manifest — REFERENCE OF RECORD (do NOT regenerate).
 
-    python3 scripts/lock.schgen.py   (or: make gen-lock)
+*** The lock schematic + PCB are now HAND-WIRED and routed.  Running
+    `make gen-lock` would reassign UUIDs and DESTROY the wiring/layout.
+    This manifest is kept as the design-of-record only; edit the .kicad_sch /
+    .kicad_pcb in KiCad, and update this file to match by hand. ***
 
 This is the SECOND PCB in the ephemerkey repo (alongside hardware/ephemerkey/);
 it shares this repo's engine (scripts/kschgen.py), Makefile, and lib tables, the
@@ -11,7 +14,9 @@ The lock is the *consumer* half of the ephemerkey system: it receives an emitted
 TOTP/unlock request over an AUTHENTICATED I2C link (ephemerkey is the master,
 this lock is the target), verifies it with a firmware HMAC challenge-response
 (shared secret in MCU flash -- no secure element), and drives a 12 V solenoid
-with a firmware peak-and-hold (economizer) profile from a single 1S Li-ion cell.
+with a firmware peak-and-hold (economizer) profile.  It has NO local battery:
+VCC + the boost/actuator draw are fed from ephemerkey's VSYS rail over J2.2 (the
+I2C connector).  J1 removed.  Status LED (D1) is driven by PC3.
 
 Power architecture (chosen for "off most of the time, draw as little as
 possible"):
@@ -116,13 +121,11 @@ MCU = dict(name="MCU", file="mcu.kicad_sch",
     ])
 
 # ============================ PWR sheet ======================================
-# 1S Li-ion -> MT3608 boost -> +12V (VSOL), gated by SOL_BOOST_EN.
+# VCC (from J2.2 = ephemerkey VSYS) -> MT3608 boost -> +12V (VSOL), gated by SOL_BOOST_EN.
+# (J1 removed -- the lock has no local battery; power arrives on the I2C connector.)
 PWR = dict(name="PWR", file="psu.kicad_sch",
-    title="Battery 1S Li-ion / 12V boost (gated)", page="3",
+    title="Power in (VSYS via J2) / 12V boost (gated)", page="3",
     big=[
-        dict(ref="J1", lib_id="Connector_Generic:Conn_01x02",
-             value="BAT 1S Li-ion", fp=JSTPH,
-             lcsc="C173752", mpn="S2B-PH-K-S", mfr="JST"),
         dict(ref="U2", lib_id="Regulator_Switching:MT3608", value="MT3608",
              fp=SOT236, lcsc="C84817", mpn="MT3608", mfr="Aerosemi"),
     ],
@@ -169,8 +172,8 @@ DRV = dict(name="DRV", file="drv.kicad_sch",
         R("R9", "10R", dnp=True),
         dict(ref="C7", lib_id="Device:C", value="1nF", fp=C0402, dnp=True),
         # --- servo option (parallel actuator; build as solenoid OR servo) ---
-        R("R13", "0R"),                                   # VSERVO_SRC <- VBAT (1S servo)
-        R("R14", "0R", dnp=True),                         # VSERVO_SRC <- VSOL (6V servo)
+        R("R13", "0R"),                                   # VSERVO_SRC <- VSOL (6V servo via boost; populated)
+        R("R14", "0R", dnp=True),                         # VSERVO_SRC <- VSYS/VCC (servo direct off connector; DNP alt)
         R("R15", "1k"),                                   # servo signal series
         R("R16", "10k"),                                  # servo signal idle pulldown
         dict(ref="C8", lib_id="Device:C_Polarized", value="220uF 25V", fp=ELEC637,
@@ -196,18 +199,19 @@ MCU["note"] = (12, 140, """MCU — ATtiny1616 (QFN-20) controller.  Pinout / net
  19 PA0/RESET    UPDI = J4.1                        5 PA4      HALL_PWR -> J6.1, J7.1, R22, R23
  14 PB0 SCL      = J2.4   (I2C clk + wake)          6 PA5      SOL_PWM -> DRV R5
  13 PB1 SDA      = J2.3   (I2C data)                7 PA6      SOL_BOOST_EN -> PWR U2.EN
-  2 PA3          LED: PA3 -> D1 -> R1 -> GND        8 PB2      SERVO_SIG  -> DRV R15
+ 18 PC3          LED: PC3 -> D1 -> R1 -> GND        8 PB2      SERVO_SIG  -> DRV R15
+  2 PA3          spare (unused -> add NC flag)
  20 PA1          BOOST_VSEL -> PWR Q2 + DRV Q5      1 PA2      SERVO_PWR_EN -> DRV R21
   8 PA7          HALL_DOOR  <- J6.3                11 PB3      HALL_BOLT  <- J7.3
                  PB4  SERVO_SIG2 -> DRV R24            spare:  PB5, PC0, PC1, PC2, PC3
-PASSIVES:  C1 100nF VCC--GND    C2 1uF VCC--GND    D1 LED + R1 1k:  PA3 -- D1 -- R1 -- GND
+PASSIVES:  C1 100nF VCC--GND    C2 1uF VCC--GND    D1 LED + R1 1k:  PC3 -- D1 -- R1 -- GND
 J2 I2C   (S4B-PH-K 4-pin):  1 = GND   2 = VCC (No-Connect)   3 = SDA (PB1)   4 = SCL (PB0)
 J4 UPDI  (1x3 header):      1 = UPDI (PA0)   2 = VCC (BAT)   3 = GND
 J6 HALL DOOR (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PA7 ;  R22 10k OUT--HALL_PWR ;  C9  100nF OUT--GND
 J7 HALL BOLT (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PB3 ;  R23 10k OUT--HALL_PWR ;  C10 100nF OUT--GND""")
 
-PWR["note"] = (12, 120, """PWR — battery 1S + MT3608 boost.  Pinout / nets (PLACED, not wired).
-J1 BAT 1S   1 = BAT+    2 = GND        (JST-PH; BAT+ also powers U1/MCU, and feeds DRV)
+PWR["note"] = (12, 120, """PWR — power-in (VSYS via J2) + MT3608 boost.  Pinout / nets (hand-wired; see KiCad).
+POWER IN:  VCC (= ephemerkey VSYS) arrives on J2.2 (MCU sheet) -> feeds U2 IN + U1/MCU + DRV.  No local battery (J1 removed).
 U2 MT3608   1 SW    2 GND    3 FB    4 EN    5 IN    6 NC
 L1 10uH     BAT+ -- SW (U2.1)                       D2 SS34:  A = SW    K = VSOL(+12V)
 C3 10uF     1 = BAT+ (= U2 IN)   2 = GND            C4 22uF:  1 = VSOL   2 = GND
@@ -227,7 +231,7 @@ D3  SS34      A = SOL_DRV      K = VSOL                               (flyback a
 C5  220uF     + = VSOL    - = GND        C6 22uF:  1 = VSOL    2 = GND        (reservoir)
 R5  100R      SOL_PWM -- Q1G             R6 100k:  Q1G -- GND     (gate drive + off-safe pulldown)
 R9* 10R       SOL_DRV -- C7.1            C7* 1nF:  C7.2 -- GND    (*DNP drain snubber)
-R13 0R        BAT+ -- VSERVO_SRC   |   R14* 0R:  VSOL -- VSERVO_SRC   (fit ONE: BAT+ = 1S servo, VSOL = 6V servo)
+R13 0R        VSOL -- VSERVO_SRC   |   R14* 0R:  VCC(VSYS) -- VSERVO_SRC   (fit ONE: VSOL = 6V servo, VSYS = direct)
 Q3  AO3401A   1 G = Q3G        2 S = VSERVO_SRC   3 D = VSERVO        (servo high-side switch)
 R19 100k      Q3G -- VSERVO_SRC                                      (Q3 gate pull-up = default OFF)
 Q4  AO3400A   1 G = ENNODE     2 S = GND          3 D = Q3G          (pulls Q3 ON when ENNODE high)
@@ -244,6 +248,6 @@ K.build(
     title=dict(title="lock", date="2026-06-28", rev="0.1",
                company="EphemerKey Authors",
                comments=["Companion TOTP lock — authenticated 12V solenoid driver",
-                         "ATtiny1616 (firmware HMAC); 1S Li-ion; peak-and-hold economizer"]),
+                         "ATtiny1616 (firmware HMAC); powered from ephemerkey VSYS; peak-and-hold economizer"]),
     sheets=[MCU, PWR, DRV],
 )

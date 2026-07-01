@@ -710,7 +710,7 @@
         "uuid": "e1000000-0000-4000-8000-000000000002"
       }
     ],
-    "used_designators": "H2-3,C11,R7,R26,#PWR2-43",
+    "used_designators": "#FLG2-3,H2-3,C11,R7,R26,#PWR2-43",
     "variants": []
   },
   "sheets": [
