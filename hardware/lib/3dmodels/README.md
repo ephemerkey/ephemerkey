@@ -12,9 +12,11 @@ its `(model …)` at `${KIPRJMOD}/../lib/3dmodels/`):
 | MAX-M10S-00B (GNSS) | `ublox_MAX-M10S.step` | `ephemerkey:ublox_MAX` | u-blox MAX form-factor, fcmadwar/3D-Step-Models-Library (AP214) |
 | SW1–SW3 tactile (XKB TS-1187A) | `SW_Push_1P1T_XKB_TS-1187A.step` | `ephemerkey:SW_Push_1P1T_XKB_TS-1187A` | reused from the tsumikoro project |
 | STM32U083KCU6 (UFQFPN-32) | KiCad `QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm.step` | `ephemerkey:UFQFPN-32-1EP_5x5mm_P0.5mm_EP3.5x3.5mm` | KiCad generic QFN-32 model (UFQFPN = ultra-thin same body; only height differs). No file vendored — model lives in KiCad's 3D dir. |
+| USB-C vertical (J5, GT-USB-7051A) | `USB_C_GT-USB-7051A.step` | `ephemerkey:USB_C_Receptacle_G-Switch_GT-USB-7051x` | EasyEDA/LCSC C2843970 via `easyeda2kicad`. KiCad ships the footprint but not the model in this install. |
 
-> Verify the MAX model's offset/rotation in the 3D viewer at layout — third-party
-> STEP origins don't always match the KiCad footprint origin.
+> Verify the MAX **and USB-C-vertical** model offset/rotation in the 3D viewer at
+> layout — third-party STEP origins don't always match the KiCad footprint origin
+> (the GT-USB-7051A STEP came from EasyEDA, aligned to its own origin).
 
 **Still to download** (no model in KiCad; source needs a free login):
 

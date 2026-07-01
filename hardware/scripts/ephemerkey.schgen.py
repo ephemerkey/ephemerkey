@@ -54,7 +54,8 @@ BTN = "ephemerkey:SW_Push_1P1T_XKB_TS-1187A"
 #   Pads 2.5mm vs datasheet 2.3mm and centers +/-3.5 vs +/-3.55mm = generous, harmless.
 # TODO(optional): swap for an exact ephemerkey:MLT-8530 footprint for a clean release.
 BUZZER = "Buzzer_Beeper:MagneticBuzzer_CUI_CMT-8504-100-SMT"
-USBC_VERT = "Connector_USB:USB_C_Receptacle_G-Switch_GT-USB-7051x"  # vertical SMT, 16-pin USB2.0
+# project copy of the KiCad footprint, model repointed to vendored lib/3dmodels/ STEP
+USBC_VERT = "ephemerkey:USB_C_Receptacle_G-Switch_GT-USB-7051x"  # vertical SMT, 16-pin USB2.0
 
 # JLCPCB LCSC for the common 0402 Basic passives
 RLCSC = {"5.1k": "C25905", "4.7k": "C25900", "10k": "C25744",
