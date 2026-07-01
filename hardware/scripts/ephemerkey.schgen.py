@@ -22,14 +22,14 @@ ROOT_UUID = "e1000000-0000-4000-8000-000000000001"   # keep stable across regens
 
 # ---- symbol libraries (all KiCad bundled) -----------------------------------
 K.register_stdlib("Device", "R", "C", "L", "LED", "Crystal", "D_Schottky",
-                  "Antenna_Chip")
+                  "Antenna_Chip", "D", "Buzzer")
 K.register_stdlib("MCU_ST_STM32U0", "STM32U083KCUx")
 K.register_stdlib("RF_GPS", "MAX-M10S")
 K.register_stdlib("Regulator_Switching", "TPS63900")
 K.register_stdlib("Sensor_Motion", "LIS3DH")
 K.register_stdlib("Battery_Management", "MCP73831-2-OT")
 K.register_stdlib("Power_Protection", "USBLC6-2SC6")
-K.register_stdlib("Transistor_FET", "Q_PMOS_GSD")
+K.register_stdlib("Transistor_FET", "Q_PMOS_GSD", "Q_NMOS_GSD")
 K.register_stdlib("Switch", "SW_Push")
 K.register_stdlib("Connector", "USB_C_Receptacle_USB2.0_16P",
                   "Conn_ARM_SWD_TagConnect_TC2030-NL")
@@ -47,11 +47,16 @@ SOT236 = "Package_TO_SOT_SMD:SOT-23-6"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOD123 = "Diode_SMD:D_SOD-123"
 BTN = "ephemerkey:SW_Push_1P1T_XKB_TS-1187A"
+# MLT-8530 has no bundled land pattern; CUI CMT-8504 (8.5mm SMD magnetic buzzer)
+# is the closest KiCad footprint -- VERIFY pads vs the MLT-8530 datasheet at layout.
+BUZZER = "Buzzer_Beeper:MagneticBuzzer_CUI_CMT-8504-100-SMT"
+USBC_VERT = "Connector_USB:USB_C_Receptacle_GCT_USB4085"   # vertical, 16-pin USB2.0
 
 # JLCPCB LCSC for the common 0402 Basic passives
 RLCSC = {"5.1k": "C25905", "4.7k": "C25900", "10k": "C25744",
-         "100k": "C25741", "1k": "C11702", "0R": "C17168"}
-CLCSC = {"100nF": "C1525", "1uF": "C29266", "12pF": "C1547", "10uF": "C15850"}
+         "100k": "C25741", "1k": "C11702", "0R": "C17168", "100R": "C106232"}
+CLCSC = {"100nF": "C1525", "1uF": "C29266", "12pF": "C1547", "10uF": "C15850",
+         "1.8pF": "C1549"}
 
 
 def R(ref, val):
@@ -103,6 +108,15 @@ MCU = dict(name="MCU", file="mcu.kicad_sch", title="MCU / RTC / Programming",
              lcsc="C130719", mpn="NCD0402R1"),
         R("R3", "1k"),
         R("R11", "4.7k"), R("R12", "4.7k"),   # lock I2C bus pull-ups -> +3V3 (master side)
+        # buzzer (LS1) + low-side driver, PB4/TIM3_CH1 PWM @ ~2.7kHz
+        dict(ref="LS1", lib_id="Device:Buzzer", value="MLT-8530", fp=BUZZER,
+             lcsc="C94599", mpn="MLT-8530", mfr="Jiangsu Huaneng"),
+        dict(ref="Q2", lib_id="Transistor_FET:Q_NMOS_GSD", value="AO3400A",
+             fp=SOT23, lcsc="C20917", mpn="AO3400A", mfr="AOS"),
+        dict(ref="D5", lib_id="Device:D", value="1N4148W", fp=SOD123,
+             lcsc="C81598", mpn="1N4148W", mfr="Changjiang"),
+        R("R13", "100R"),                                # buzzer gate series
+        R("R14", "100k"),                                # buzzer gate pulldown (off-safe)
     ])
 
 # ============================ PSU sheet ======================================
@@ -118,6 +132,9 @@ PSU = dict(name="PSU", file="psu.kicad_sch",
         dict(ref="U2", lib_id="Regulator_Switching:TPS63900", value="TPS63900DSKR",
              fp="Package_SON:WSON-10-1EP_2.5x2.5mm_P0.5mm_EP1.2x2mm",
              lcsc="C1518762", mpn="TPS63900DSKR", mfr="Texas Instruments"),
+        dict(ref="J5", lib_id="Connector:USB_C_Receptacle_USB2.0_16P",
+             value="USB-C (vert)", fp=USBC_VERT,
+             lcsc="C7095263", mpn="USB4085-GF-A", mfr="GCT"),   # 2nd port, same bus
     ],
     small=[
         dict(ref="U3", lib_id="Power_Protection:USBLC6-2SC6", value="USBLC6-2SC6",
@@ -141,6 +158,7 @@ PSU = dict(name="PSU", file="psu.kicad_sch",
         dict(ref="D4", lib_id="Device:LED", value="CHG", fp=LED0402,
              lcsc="C130719", mpn="NCD0402R1"),
         R("R8", "1k"),
+        R("R15", "5.1k"), R("R16", "5.1k"),   # J5 (2nd USB-C) CC1/CC2 pulldowns (sink)
     ])
 
 # ============================ GNSS sheet =====================================
@@ -160,9 +178,10 @@ GNSS = dict(name="GNSS", file="gnss.kicad_sch", title="GNSS (MAX-M10S + antenna)
         C("C19", "10uF", C0805), C("C20", "100nF"),       # MAX-M10S VCC
         C("C21", "100nF"),                                # V_BCKP
         C("C22", "100nF"),                                # V_IO
-        # W3011A pi-match: series populated 0R, two shunts DNP (tune at bring-up)
+        # W3011A pi-match: series 0R; antenna-side shunt Cm2 = 1.8pF (datasheet
+        # reference value), RF_IN-side shunt Cm3 = DNP. Trim both with a VNA.
         R("Rm1", "0R"),
-        dict(ref="Cm2", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),
+        C("Cm2", "1.8pF"),
         dict(ref="Cm3", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),
     ])
 
@@ -190,13 +209,16 @@ MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6,
   8   PA2             ACC_INT1 (EXTI wake)       24  PA14            SWCLK (J1)
   9   PA3             ACC_INT2 (EXTI tamper)     25  PA15            BTN2 SW2 (pull-up)
  10   PA4             GNSS_RESET_N (OD out)      26  PB3             spare
- 11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             spare
+ 11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             BUZZER_PWM (TIM3_CH1) -> R13 -> Q2
  12   PA6             LED_GRN  D1 + R2 1k        28  PB5             spare
  13   PA7             LED_RED  D2 + R3 1k        29  PB6             I2C1_SCL -> U5
  14   PB0             LOCK_SDA <> J2.3 (I2C R11)  30  PB7             I2C1_SDA -> U5
  15   PB1             LOCK_SCL -> J2.4 (I2C R12)  31  PF3/BOOT0       BTN3 SW3 + DFU
  16   VSS             GND                        32  VSS  / EP       GND
 RTC:  Y1 32.768kHz across PC14/PC15; C1,C2 12pF load caps (match to Y1 CL; trim via RTC SMOOTHCALIB).
+BUZZER:  LS1 MLT-8530 (3.6V magnetic transducer, ~2.7kHz, 95mA): pin1 = +3V3, pin2 = BUZZ_DRV (Q2 drain).
+      Q2 AO3400A low-side: G <- R13 100R <- BUZZER_PWM (PB4/TIM3_CH1); S -> GND; D -> BUZZ_DRV.  R14 100k gate->GND
+      (off-safe). D5 1N4148W flyback across LS1: A = BUZZ_DRV, K = +3V3.  FW drives PB4 PWM ~2.7kHz for tones.
 PWR:  +3V3 from PSU sheet, C6 10uF bulk.   J1 = SWD TC2030-NL: SWDIO, SWCLK, NRST, +3V3, GND.
 BTN:  3 user buttons. SW1->PA5, SW2->PA15 active-low (MCU pull-ups, to GND).
       SW3->PF3/BOOT0 active-HIGH to +3V3 (R1 10k pulldown = default boot-from-flash).
@@ -215,6 +237,9 @@ DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)
 
 PSU["note"] = (12, 158, """Power — pinout (USB-C -> charge -> load-share -> buck-boost).  PLACED, not wired.
 J3  USB-C 16P:   VBUS -> VBUS_5V;  GND -> GND;  CC1 -> R4 5.1k -> GND;  CC2 -> R5 5.1k -> GND
+J5  USB-C 16P (VERTICAL, GCT USB4085, 2nd port SAME BUS):  VBUS -> VBUS_5V (|| J3);  GND -> GND;
+      D+/D- -> same D+/D- net as J3 (through U3 ESD);  CC1 -> R15 5.1k -> GND;  CC2 -> R16 5.1k -> GND.
+      Its own CC pulldowns (per receptacle).  Use one port at a time -- don't plug two sources at once.
                  D+ -> U3 -> USB_DP (PA12);  D- -> U3 -> USB_DM (PA11);  SBU1/2 = NC;  SHIELD -> GND
 U3  USBLC6-2SC6:  1 I/O1(D+ conn)   2 GND   3 I/O2(D- conn)   4 I/O2(D- MCU)   5 VBUS   6 I/O1(D+ MCU)
 U4  MCP73831-2-OT (SOT-23-5):  1 STAT -> D4 + R8 1k    2 VSS -> GND    3 VBAT -> BAT+ (C11 10uF)
@@ -237,7 +262,9 @@ MD1 MAX-M10S (18-pin LCC):
   7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)
   8  VCC        +3V3, C19 10uF/C20   17  SCL        NC
   9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet
-ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.   Cm2/Cm3 shunt = DNP (tune w/ VNA).
+ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed
+          (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up
+          (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.
           Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.""")
 
 SENSORS["note"] = (12, 70, """Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.

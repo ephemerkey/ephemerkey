@@ -59,11 +59,18 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
 ### GPS Antenna: W3011A
 
 - SMD chip antenna, 1.559–1.606 GHz (covers GPS L1 / Galileo E1 / GLONASS G1).
-- Needs a **π-match** (series + two shunt placeholders) on a 50Ω controlled-
-  impedance trace into MAX-M10S RF_IN, plus the manufacturer's keep-out/ground
-  clearance on that PCB corner. Tune match with a VNA at bring-up.
-- Passive antenna — the MAX-M10S internal LNA provides the gain; no external
-  LNA/bias-tee required. (LNA_EN available if an active antenna is ever fitted.)
+- **Matching (datasheet-verified):** the W3011A datasheet labels the match a
+  single *optional shunt*, but its rated performance (−16 dB return loss, 85%
+  efficiency) is measured **with a shunt 1.8 pF** at the antenna feed. So the
+  π-placeholder is populated **series 0 Ω (Rm1) + antenna-side shunt Cm2 = 1.8 pF**
+  (datasheet reference value), RF_IN-side shunt Cm3 = DNP. VNA-trim at bring-up
+  (target S11 < −10 dB, 1559–1606 MHz) on a 50 Ω controlled-impedance trace.
+- **Keep-out:** 4.00 × 6.25 mm ground clearance under/around AE1 (W3011A datasheet),
+  ground area ringed with vias; reserve a board corner. 50 Ω feed line.
+- Passive antenna — the MAX-M10S RF_IN is 50 Ω with an **internal DC block** (no
+  external DC-block cap) and an internal LNA (low-gain mode default) that supplies
+  the gain; no external LNA/bias-tee. (Per u-blox MAX-M10S integration manual
+  UBX-20053088. LNA_EN available if an active antenna is ever fitted.)
 
 ### Power: TPS63900DSKR (buck-boost)
 
@@ -233,7 +240,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 24 | PA14 | SWCLK | debug |
 | 25 | PA15 | Button | SW2 user button 2 (internal pull-up, to GND) |
 | 26 | PB3 | Spare | |
-| 27 | PB4 | Spare | |
+| 27 | PB4 | BUZZER_PWM | TIM3_CH1 → LS1 buzzer via Q2 low-side driver |
 | 28 | PB5 | Spare | |
 | 29 | PB6 | I2C1_SCL | LIS3DH (and optional GNSS DDC) |
 | 30 | PB7 | I2C1_SDA | LIS3DH (and optional GNSS DDC) |
@@ -243,7 +250,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 
 **Peripheral summary:** USART1 (GNSS), I2C (master, authenticated lock link: PB0/PB1, wake-on-I2C), I2C1 (accel),
 TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning), 2×EXTI (accel),
-SWD (debug). ~6 spare GPIO (PA8, PA15, PB3–PB5).
+TIM3_CH1 (buzzer PWM, PB4), SWD (debug). ~5 spare GPIO (PA8, PA15, PB3, PB5).
 
 **Notes**
 - USB DM/DP must land on PA11/PA12. On the UFQFPN-32, PA9/PA10 and PA11/PA12
