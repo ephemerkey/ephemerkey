@@ -37,12 +37,14 @@ BOM + CPL.
   J3 (solenoid), J6/J7 (hall) — they carry LCSC and are placed via **THT assembly**.
 - **Hand-soldered (excluded from BOM+CPL):** the 1×3 pin headers **J4** (UPDI),
   **J5 / J8** (servo) — no LCSC. Listed in `hardware/lock/lock-handsolder.txt`.
-- **Assembly tier:** the JST connectors are **through-hole**, so this order needs
-  the **Standard** assembly tier (Economic is SMD-only, top-side). All SMD parts
-  are Economic-eligible on their own.
-  - **C5 / C8 — 220 µF 25 V uses `C4747974` (RST220UF25V019)**, which *is* available
-    for Economic assembly (swapped from `C2918361`, which was not — same D6.3×L7.7 mm
-    body). So the cap no longer forces the tier; only the THT connectors do.
+- **Assembly tier — Economic worked (confirmed on an actual order).** JLCPCB
+  **Economic** assembly accepted the whole board, **including the through-hole JST
+  connectors** J2/J3/J6/J7 — so THT did *not* force the Standard tier here, contrary
+  to the old "Economic is SMD-only" assumption. Only the hand-soldered pin headers
+  (J4/J5/J8) sit outside JLC assembly.
+  - **C5 / C8 — 220 µF 25 V uses `C4747974` (RST220UF25V019)**, which is
+    Economic-eligible (swapped from `C2918361`, which was not — same D6.3×L7.7 mm
+    body). With that swap, the full BOM assembles on Economic.
 
 ## State at capture — READ BEFORE ORDERING
 This is a **working snapshot, not a signed-off release.** Known-open items:
