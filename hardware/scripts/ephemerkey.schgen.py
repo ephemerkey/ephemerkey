@@ -240,21 +240,43 @@ J2 LOCK IF (RA JST-PH 4-pin, S4B-PH-K; AUTHENTICATED I2C; ephemerkey = MASTER, l
 DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)  4 = SDA (PB7).
       Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
 
-PSU["note"] = (12, 158, """Power — pinout (USB-C -> charge -> load-share -> buck-boost).  PLACED, not wired.
-J3  USB-C 16P:   VBUS -> VBUS_5V;  GND -> GND;  CC1 -> R4 5.1k -> GND;  CC2 -> R5 5.1k -> GND
-J5  USB-C 16P (VERTICAL/upright SMT, G-Switch GT-USB-7051A, 2nd port SAME BUS):  VBUS -> VBUS_5V (|| J3);  GND -> GND;
-      D+/D- -> same D+/D- net as J3 (through U3 ESD);  CC1 -> R15 5.1k -> GND;  CC2 -> R16 5.1k -> GND.
-      Its own CC pulldowns (per receptacle).  Use one port at a time -- don't plug two sources at once.
-                 D+ -> U3 -> USB_DP (PA12);  D- -> U3 -> USB_DM (PA11);  SBU1/2 = NC;  SHIELD -> GND
-U3  USBLC6-2SC6:  1 I/O1(D+ conn)   2 GND   3 I/O2(D- conn)   4 I/O2(D- MCU)   5 VBUS   6 I/O1(D+ MCU)
-U4  MCP73831-2-OT (SOT-23-5):  1 STAT -> D4 + R8 1k    2 VSS -> GND    3 VBAT -> BAT+ (C11 10uF)
-                               4 VDD <- VBUS_5V (C10 10uF)   5 PROG -> R6 4.7k -> GND  (Ichg ~213mA = 0.5C/500mAh)
-Q1  AO3401A load-share:  G -> VBUS_5V & R7 100k -> GND;  S -> BAT+;  D -> VSYS.   D3 B5819W: VBUS_5V -> VSYS.
-                         => VSYS = VBUS (USB in: Q1 off, battery charges) | BAT (USB out: Q1 on)
-U2  TPS63900 (WSON-10):  1 EN -> VIN    2 SEL -> GND    3/4/5 CFG1/2/3 strap = 3.3V    6 VOUT -> +3V3
-                         7 LX2   9 LX1  (L1 2.2uH across LX1-LX2)    8 GND    10 VIN <- VSYS    11 EP -> GND
-                         C12 on VIN; C13, C14 on +3V3 (10uF).   C15 VBUS bulk; C16 VBAT bulk.
-J4  JST-PH (RA):  1 = BAT+    2 = GND    (1S Li-ion, protected pack).""")
+PSU["note"] = (12, 158, """POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.
+
+REF  PART            PIN  SIGNAL  CONNECTION                    REF  PART           PIN    SIGNAL    CONNECTION
+---  --------------  ---  ------  --------------------------    ---  -------------  -----  --------  -----------------------------
+J3   USB-C 16P       --   VBUS    VBUS_5V                       U4   MCP73831-2-OT  1      STAT      D4 CHG LED + R8 1k
+     (horizontal)    --   GND     GND                                (SOT-23-5)     2      VSS       GND
+                     --   CC1     R4 5.1k -> GND                                    3      VBAT      BAT+  (C11 10uF)
+                     --   CC2     R5 5.1k -> GND                                    4      VDD       VBUS_5V  (C10 10uF)
+                     --   D+      U3 -> USB_DP / PA12                               5      PROG      R6 4.7k -> GND  (Ichg ~213mA)
+                     --   D-      U3 -> USB_DM / PA11
+                     --   SBU1/2  NC                            Q1   AO3401A PMOS   1      G         VBUS_5V ; R7 100k -> GND
+                     --   SHIELD  GND                                load-share     2      S         VSYS   <-- NOT BAT+
+                                                                     (SOT-23)       3      D         BAT+   <-- NOT VSYS
+J5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)
+     GT-USB-7051A    --   GND     GND                           D3   B5819W         A      --        VBUS_5V
+                     --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS
+                     --   CC2     R16 5.1k -> GND
+                     --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)
+                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (preset 1)
+                                                                                    3/4/5  CFG1/2/3  strap = 3.3V out
+U3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)
+     (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH
+                     3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH
+                     4    I/O2    D- (MCU, PA11)                                    8      GND       GND
+                     5    VBUS    VBUS_5V                                           10     VIN       VSYS  (C12 10uF)
+                     6    I/O1    D+ (MCU, PA12)                                    11     EP        GND
+
+                                                                J4   JST-PH (RA)    1      BAT+      BAT+  (1S Li-ion, protected)
+                                                                                    2      GND       GND
+
+LOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BAT+  (USB out: Q1 ON via R7).
+  A PMOS body diode conducts D->S.  With D=BAT+ / S=VSYS it points BAT+ -> VSYS: the battery always reaches the
+  load, and USB can never back-feed the cell.  Swapping S/D forward-biases the body diode when VSYS ~4.7V > BAT+,
+  dumping uncontrolled charge current into the cell and bypassing U4.
+  The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.
+
+BULK:  C15 = VBUS_5V.   C16 = BAT+.""")
 
 GNSS["note"] = (12, 150, """GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.
 MD1 MAX-M10S (18-pin LCC):
