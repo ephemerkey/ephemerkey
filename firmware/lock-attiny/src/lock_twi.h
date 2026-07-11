@@ -1,40 +1,37 @@
 /*
  * ephemerkey lock board — I2C target + register protocol (ATtiny1616 TWI0)
  *
- * Implements the spec in hardware/lock/README.md: target @ 0x60 with three
- * registers. The ISR is pure protocol I/O (fast, no crypto/actuation); the main
- * loop does HMAC verification and actuation. Shared state is exposed as extern
- * volatiles below.
- *
- *   0x00 STATUS  (read)  -> twi_status byte (door/bolt/actuator/rail/busy/ok)
+ *   0x00 STATUS  (read)  -> twi_status byte
  *   0x01 NONCE   (read)  -> 16 bytes; reading ARMS the challenge
- *   0x10 COMMAND (write) -> cmd(1) ‖ HMAC-SHA1(secret, nonce ‖ cmd) (20)
+ *   0x10 COMMAND (write) -> cmd(1) ‖ HMAC(pairing_secret, nonce ‖ cmd)      (21B)
+ *   0x20 CONFIG  (write) -> blob(CONFIG_LEN) ‖ HMAC(config_secret, nonce ‖ blob)
+ *                (read)  -> current config blob (unauthenticated)
+ *
+ * COMMAND and CONFIG writes share one RX buffer (only one is in flight at a time)
+ * and each sets its own *_pending flag on STOP. The ISR is pure protocol I/O.
  */
 #ifndef LOCK_TWI_H
 #define LOCK_TWI_H
 
 #include <stdint.h>
 #include "nonce.h"      /* NONCE_LEN */
+#include "config.h"     /* CONFIG_LEN */
 
-/* Build with -DLOCK_DEBUG=1 to expose a debug register (see below). Off by
- * default — never ship it. */
 #ifndef LOCK_DEBUG
 #define LOCK_DEBUG      0
 #endif
 
-/* Register addresses. */
 #define REG_STATUS      0x00
 #define REG_NONCE       0x01
 #define REG_COMMAND     0x10
+#define REG_CONFIG      0x20
 #if LOCK_DEBUG
-#define REG_DEBUG       0x11   /* read 32B: armed nonce(16) ‖ last-verified nonce(16) */
+#define REG_DEBUG       0x11
 #endif
 
-/* Commands. */
 #define CMD_UNLOCK      0x01
 #define CMD_LOCK        0x02
 
-/* STATUS bits. */
 #define ST_DOOR_CLOSED  0x01
 #define ST_BOLT_LOCKED  0x02
 #define ST_ACTUATOR     0x04   /* 1 = servo, 0 = solenoid */
@@ -42,18 +39,21 @@
 #define ST_BUSY         0x10
 #define ST_LAST_CMD_OK  0x20
 
-/* COMMAND payload = cmd(1) + HMAC-SHA1(20). */
-#define CMD_MAXLEN      21u
+#define HMAC_LEN        20u                    /* SHA1_DIGEST_SIZE */
+#define CMD_LEN         (1u + HMAC_LEN)        /* COMMAND payload */
+#define CFG_LEN         (CONFIG_LEN + HMAC_LEN)/* CONFIG payload  */
+#define RX_MAX          CFG_LEN                /* larger of the two writes */
 
 /* --- shared state (ISR <-> main) --- */
-extern volatile uint8_t twi_status;                 /* main writes, ISR serves  */
-extern volatile uint8_t twi_cmd_pending;            /* ISR sets on COMMAND STOP */
-extern volatile uint8_t twi_cmd_len;
-extern uint8_t          twi_cmd_buf[CMD_MAXLEN];    /* cmd ‖ hmac               */
-extern uint8_t          twi_next_nonce[NONCE_LEN];  /* main pre-generates       */
-extern uint8_t          twi_armed_nonce[NONCE_LEN]; /* ISR freezes on NONCE read*/
-extern volatile uint8_t twi_nonce_armed;            /* a challenge is live      */
-extern volatile uint8_t twi_nonce_consumed;         /* ISR sets -> main regens  */
+extern volatile uint8_t twi_status;
+extern volatile uint8_t twi_cmd_pending;            /* COMMAND write complete   */
+extern volatile uint8_t twi_cfg_pending;            /* CONFIG write complete    */
+extern volatile uint8_t twi_rx_len;                 /* bytes in twi_rx_buf      */
+extern uint8_t          twi_rx_buf[RX_MAX];         /* COMMAND or CONFIG payload*/
+extern uint8_t          twi_next_nonce[NONCE_LEN];
+extern uint8_t          twi_armed_nonce[NONCE_LEN];
+extern volatile uint8_t twi_nonce_armed;
+extern volatile uint8_t twi_nonce_consumed;
 #if LOCK_DEBUG
 extern uint8_t          twi_dbg[32];                /* armed(16) ‖ verified(16) */
 #endif

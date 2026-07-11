@@ -1,14 +1,24 @@
 /*
- * ephemerkey lock board — lock/unlock actuation (ATtiny1616)
- * Wraps the servo OR solenoid+boost drivers per LOCK_ACTUATOR (lock_config.h),
- * including the boost<->servo mutual-exclusion + VSOL drain sequencing.
- * Blocking; call from the main loop (not an ISR).
+ * ephemerkey lock board — non-blocking actuator state machine (ATtiny1616)
+ *
+ * A config-driven state machine drives the servo(s) or solenoid+boost and turns
+ * them off when done, WITHOUT blocking — it is advanced by actuate_tick() from
+ * the main loop, timed by a TCB0 millisecond tick that runs only during a cycle.
+ * So I2C stays responsive throughout, and a new lock/unlock aborts the current
+ * cycle (actuate_begin re-targets the machine).
+ *
+ * Servos: full power for the configured drive time, then released.
+ * Solenoid (unlock only): boost -> strike -> economizer hold (TCD0 PWM at the
+ *   configured duty) -> drain -> release. LOCK on a solenoid is a no-op.
  */
 #ifndef ACTUATE_H
 #define ACTUATE_H
 
-void actuate_init(void);   /* safe state for whichever actuator is built */
-void actuate_unlock(void);
-void actuate_lock(void);   /* servo: lock angle; momentary solenoid: no-op */
+#include <stdint.h>
+
+void    actuate_init(void);
+void    actuate_begin(uint8_t unlock);  /* start or ABORT toward unlock(1)/lock(0) */
+void    actuate_tick(void);             /* advance the machine; call every loop */
+uint8_t actuate_busy(void);             /* 1 while a cycle is in progress */
 
 #endif /* ACTUATE_H */

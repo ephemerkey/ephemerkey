@@ -23,7 +23,7 @@ import argparse
 import serial  # pyserial
 
 ADDR = 0x60
-SECRET = b"ephemerkey-dev-secrt"
+SECRET = b"ephemerkey-dev01"   # pairing secret; matches src/secret.c fallback
 REG_STATUS, REG_NONCE, REG_COMMAND, REG_DEBUG = 0x00, 0x01, 0x10, 0x11
 CMD_UNLOCK = 0x01
 

@@ -1,24 +1,25 @@
 /*
- * ephemerkey lock board — pairing-secret access (ATtiny1616)
+ * ephemerkey lock board — HMAC secrets (ATtiny1616)
  */
 #include <avr/io.h>
 #include <string.h>
 #include "secret.h"
 
-/* DEV DEFAULT — bench only. REPLACE by provisioning USERROW over UPDI, then
- * set lockbits. If USERROW holds a real secret this is never used. */
-static const uint8_t k_fallback[LOCK_SECRET_LEN] = {
-    0x65, 0x70, 0x68, 0x65, 0x6D, 0x65, 0x72, 0x6B, 0x65, 0x79,
-    0x2D, 0x64, 0x65, 0x76, 0x2D, 0x73, 0x65, 0x63, 0x72, 0x74,
-};
+/* DEV DEFAULTS — bench only, exactly SECRET_LEN bytes (no NUL). REPLACE by
+ * provisioning USERROW over UPDI. */
+static const uint8_t k_pairing_fallback[SECRET_LEN] __attribute__((nonstring)) = "ephemerkey-dev01";
+static const uint8_t k_config_fallback[SECRET_LEN]  __attribute__((nonstring)) = "ephemerkey-cfg01";
 
-void secret_get(uint8_t out[LOCK_SECRET_LEN])
+static void get_secret(uint8_t offset, const uint8_t *fallback, uint8_t out[SECRET_LEN])
 {
-    const uint8_t *ur = (const uint8_t *)&USERROW;   /* mapped at 0x1300 */
+    const uint8_t *ur = (const uint8_t *)&USERROW + offset;   /* USERROW @ 0x1300 */
 
     uint8_t blank = 1;
-    for (uint8_t i = 0; i < LOCK_SECRET_LEN; i++) {
+    for (uint8_t i = 0; i < SECRET_LEN; i++) {
         if (ur[i] != 0xFF) { blank = 0; break; }
     }
-    memcpy(out, blank ? k_fallback : ur, LOCK_SECRET_LEN);
+    memcpy(out, blank ? fallback : ur, SECRET_LEN);
 }
+
+void secret_get_pairing(uint8_t out[SECRET_LEN]) { get_secret(0,  k_pairing_fallback, out); }
+void secret_get_config(uint8_t out[SECRET_LEN])  { get_secret(16, k_config_fallback,  out); }

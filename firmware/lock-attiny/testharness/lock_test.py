@@ -20,11 +20,14 @@ import argparse
 import serial  # pyserial
 
 ADDR = 0x60
-# DEV fallback secret (matches src/secret.c k_fallback when USERROW is blank).
-SECRET = b"ephemerkey-dev-secrt"
+# DEV fallback secrets — match src/secret.c when USERROW is blank (16 bytes each).
+SECRET = b"ephemerkey-dev01"        # pairing (unlock/lock)
+CONFIG_SECRET = b"ephemerkey-cfg01"  # config (admin)
 
-REG_STATUS, REG_NONCE, REG_COMMAND = 0x00, 0x01, 0x10
+REG_STATUS, REG_NONCE, REG_COMMAND, REG_CONFIG = 0x00, 0x01, 0x10, 0x20
 CMD_UNLOCK, CMD_LOCK = 0x01, 0x02
+CONFIG_LEN = 9
+CFG_MAGIC = 0xE1
 
 STATUS_BITS = [
     (0x01, "DOOR_CLOSED"), (0x02, "BOLT_LOCKED"), (0x04, "ACTUATOR=servo"),
@@ -88,11 +91,57 @@ def send_command(b, cmd_byte):
     return ok
 
 
+def us_to_pos(us):
+    return max(0, min(255, round((us - 500) * 255 / 2000)))
+
+
+def build_config(servo1=True, servo2=False, solenoid=False,
+                 s1_lock_us=1000, s1_unlock_us=2000,
+                 s2_lock_us=1000, s2_unlock_us=2000,
+                 primary_ms=600, hold_ms=200, hold_duty=128):
+    flags = (0x01 if servo1 else 0) | (0x02 if servo2 else 0) | (0x04 if solenoid else 0)
+    return bytes([
+        CFG_MAGIC, flags,
+        us_to_pos(s1_lock_us), us_to_pos(s1_unlock_us),
+        us_to_pos(s2_lock_us), us_to_pos(s2_unlock_us),
+        min(255, primary_ms // 10), min(255, hold_ms // 100), hold_duty,
+    ])
+
+
+def show_config(b):
+    d = b.read_reg(REG_CONFIG, CONFIG_LEN)
+    if d is None:
+        print("CONFIG: no response"); return None
+    print("CONFIG: " + d.hex() + "  (magic=0x%02X flags=0x%02X primary=%dms hold=%dms duty=%d)"
+          % (d[0], d[1], d[6] * 10, d[7] * 100, d[8]))
+    return d
+
+
+def write_config(b, blob):
+    nonce = b.read_reg(REG_NONCE, 16)
+    if nonce is None:
+        print("NONCE: no response"); return False
+    mac = hmac.new(CONFIG_SECRET, nonce + blob, hashlib.sha1).digest()
+    ok = b.write([REG_CONFIG] + list(blob) + list(mac))
+    print("CONFIG write:", "OK" if ok else "FAILED")
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", choices=["status", "unlock", "lock", "nonce"])
+    ap.add_argument("action",
+                    choices=["status", "unlock", "lock", "nonce", "getconfig", "setconfig"])
     ap.add_argument("--port", default="/dev/ttyUSB1")
     ap.add_argument("--baud", type=int, default=57600)
+    # setconfig knobs
+    ap.add_argument("--servo1", type=int, default=1)
+    ap.add_argument("--servo2", type=int, default=0)
+    ap.add_argument("--solenoid", type=int, default=0)
+    ap.add_argument("--s1-lock", type=int, default=1000)
+    ap.add_argument("--s1-unlock", type=int, default=2000)
+    ap.add_argument("--primary-ms", type=int, default=600)
+    ap.add_argument("--hold-ms", type=int, default=200)
+    ap.add_argument("--hold-duty", type=int, default=128)
     args = ap.parse_args()
 
     b = Bridge(args.port, args.baud)
@@ -102,6 +151,16 @@ def main():
     elif args.action == "nonce":
         d = b.read_reg(REG_NONCE, 16)
         print("NONCE:", d.hex() if d else "no response")
+    elif args.action == "getconfig":
+        show_config(b)
+    elif args.action == "setconfig":
+        show_config(b)
+        blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
+                            args.s1_lock, args.s1_unlock, s2_lock_us=1000, s2_unlock_us=2000,
+                            primary_ms=args.primary_ms, hold_ms=args.hold_ms, hold_duty=args.hold_duty)
+        write_config(b, blob)
+        time.sleep(0.3)
+        show_config(b)
     else:
         cmd = CMD_UNLOCK if args.action == "unlock" else CMD_LOCK
         show_status(b)

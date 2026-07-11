@@ -70,25 +70,43 @@ actuator with `-DLOCK_ACTUATOR=ACTUATOR_SERVO` (default) or `ACTUATOR_SOLENOID`.
 |-----|--------|----------|
 | `0x00 STATUS`  | read  | bit0 DOOR_CLOSED · bit1 BOLT_LOCKED · bit2 ACTUATOR (1=servo) · bit3 RAIL_12V · bit4 BUSY · bit5 LAST_CMD_OK |
 | `0x01 NONCE`   | read  | fresh 16-byte nonce; **reading arms it** (single-use) |
-| `0x10 COMMAND` | write | `cmd(1) ‖ HMAC-SHA1(secret, nonce ‖ cmd)(20)`; cmd `0x01`=UNLOCK, `0x02`=LOCK |
+| `0x10 COMMAND` | write | `cmd(1) ‖ HMAC-SHA1(pairing_secret, nonce ‖ cmd)(20)`; `0x01`=UNLOCK, `0x02`=LOCK |
+| `0x20 CONFIG`  | write | `blob(9) ‖ HMAC-SHA1(config_secret, nonce ‖ blob)(20)` · read = current blob |
 
-Flow: read `NONCE` → write `COMMAND` → lock recomputes the HMAC, **constant-time**
-compares, **burns the nonce** (replay-proof), then actuates. Master re-reads
-`STATUS`. The HMAC covers `nonce ‖ cmd` only — no TOTP code (the lock has no
-clock to validate one).
+Flow: read `NONCE` → write `COMMAND`/`CONFIG` → lock recomputes the HMAC,
+**constant-time** compares, **burns the nonce** (replay-proof), then actuates or
+saves config. Master re-reads `STATUS`. HMAC covers `nonce ‖ payload` only (no
+TOTP code — the lock has no clock). UNLOCK/LOCK are **idempotent** (re-lock /
+re-unlock is fine).
 
+- **Two secrets, split across USERROW** (`SECRET_LEN`=16 each): pairing
+  `[0:16]` (UNLOCK/LOCK) and config `[16:32]` (admin CONFIG writes). DEV
+  fallbacks when USERROW is blank; provision over UPDI + set lockbits.
 - **Anti-replay:** the armed nonce is single-use *and* derived from a monotonic
-  counter persisted in EEPROM (survives resets/power loss; no TRNG needed).
-- **Secret:** `LOCK_SECRET_LEN` bytes read from **USERROW** (0x1300) at boot,
-  compile-time DEV fallback if USERROW is blank. Provision over UPDI + set
-  lockbits in production.
-- **Architecture:** POWER-DOWN sleep → I²C START wakes the MCU (verified) → the
-  TWI ISR services the register protocol → main verifies HMAC + actuates → sleep.
-  STATUS reads pulse `HALL_PWR`, sample door/bolt, drop it (~0 µA between reads).
-  LED gives brief feedback: 2 pulses at boot, 1 = command accepted, 3 = rejected.
+  EEPROM counter (survives resets/power loss; no TRNG).
 
-Actuation reuses the servo / solenoid+boost drivers with the same boost↔servo
-mutual-exclusion + VSOL-drain sequencing proven in earlier bringup.
+### Programmable config (bit-packed, 9 bytes, persisted in EEPROM)
+
+| Byte | Field | Encoding |
+|---|---|---|
+| 0 | magic (0xE1) | validity guard |
+| 1 | flags | b0 servo1_en · b1 servo2_en · b2 solenoid_en |
+| 2–5 | servo1/2 lock & unlock pos | 8-bit each → 500–2500 µs |
+| 6 | primary drive time | ×10 ms (servo full-power drive / solenoid strike) |
+| 7 | solenoid hold time | ×100 ms (0 = none) |
+| 8 | solenoid hold duty | 0–255 → 0–100 % (TCD0 economizer) |
+
+Actuator selection + timing are runtime config, not compile-time. Servos get
+**full power** for the drive time then release; the **duty cycle applies to the
+solenoid** hold only.
+
+### Non-blocking actuation
+
+Actuation runs as a **TCB0-tick-driven state machine** (`actuate.c`), never
+blocking the main loop: the machine keeps the right rails powered then turns
+them off while I²C stays fully responsive, and a new lock/unlock **aborts** the
+in-flight cycle. Boost↔servo mutual-exclusion + VSOL drain are preserved. The
+LED mirrors BUSY.
 
 > **Verification status:** protocol verified **live on hardware** via the
 > RedBoard I²C bridge (`testharness/`) — unlock/lock accept with a valid HMAC,

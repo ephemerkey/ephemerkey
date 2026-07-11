@@ -1,15 +1,20 @@
 /*
- * ephemerkey lock board — pairing-secret access (ATtiny1616)
- * Reads the HMAC pairing secret from USERROW; falls back to a compile-time DEV
- * default when USERROW is blank. See lock_config.h.
+ * ephemerkey lock board — HMAC secrets (ATtiny1616)
+ *
+ * Two independent secrets, split across USERROW (0x1300), each SECRET_LEN bytes:
+ *   pairing secret  = USERROW[0 .. 15]   — authorizes UNLOCK / LOCK
+ *   config secret   = USERROW[16 .. 31]  — authorizes REG_CONFIG writes (admin)
+ * Compile-time DEV fallbacks are used when USERROW is blank. Provision over UPDI
+ * and set lockbits in production.
  */
 #ifndef SECRET_H
 #define SECRET_H
 
 #include <stdint.h>
-#include "lock_config.h"
 
-/* Copy the LOCK_SECRET_LEN-byte pairing secret into out[]. */
-void secret_get(uint8_t out[LOCK_SECRET_LEN]);
+#define SECRET_LEN   16u
+
+void secret_get_pairing(uint8_t out[SECRET_LEN]);
+void secret_get_config(uint8_t out[SECRET_LEN]);
 
 #endif /* SECRET_H */
