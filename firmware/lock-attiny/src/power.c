@@ -28,11 +28,12 @@ void boost_disable(void)
 
 void boost_servo_enable(void)
 {
-    /* Raise the servo rail via the boost, using the BOOST_VSEL "boost sel"
-     * signal. ** Current hardware cannot do this ** — VSEL high engages the Q5
-     * interlock that disables servo power. Behind CFG_SERVO_BOOST for a future
-     * hardware rev; finalize the exact VSEL level (6 V interlock-clear vs 12 V)
-     * with the boosted-servo hardware. */
-    PORTA.OUTSET = BOOST_VSEL_bm;
-    PORTA.OUTSET = BOOST_EN_bm;
+    /* 6 V boosted servo: enable the converter with BOOST_VSEL LOW (6 V FB
+     * select). VSEL low keeps the Q5 interlock CLEAR, so servo power can be
+     * applied — VSOL rises to ~6 V and feeds the servo. (VSEL high / 12 V would
+     * fire the interlock and cut servo power, so it is never used for servos.)
+     * Requires the servo strapped to VSOL (R13) and a 6 V-rated servo — behind
+     * CFG_SERVO_BOOST, off by default. */
+    PORTA.OUTCLR = BOOST_VSEL_bm;   /* 6 V select, interlock clear */
+    PORTA.OUTSET = BOOST_EN_bm;     /* enable the converter */
 }

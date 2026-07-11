@@ -30,14 +30,19 @@ status — running from power-down sleep, woken by the I²C bus.
 Fuses read factory-default; device is unlocked. See the bringup notes in the
 repo for the full fuse dump.
 
-### Servo power — runs on battery voltage, not the boost
+### Servo power — default strap runs on battery voltage
 
-The servo supply is strap-selected: `R13`(0Ω, fitted) → VSOL, or `R14`(DNP)
-→ VCC/VSYS. With the MT3608 **disabled**, its L1+D2 Schottky path passes Vin
-through, so VSOL settles at ~Vbat−0.3 V — either strap yields ~Vbat at the
-servo as long as the boost stays off. Firmware **never** asserts
-`SOL_BOOST_EN`, and holds `BOOST_VSEL` low (also required — Q5 interlocks servo
-power off whenever `BOOST_VSEL` is high / 12 V mode).
+The servo supply (`VSERVO_SRC`) is strap-selected on the DRV sheet:
+**`R13`(0Ω, fitted) → BAT+** (direct battery, the default) or **`R14`(DNP) →
+VSOL** (the 6 V boost rail). So on the default board the servo runs at battery
+voltage and the boost never reaches it — for a normal servo the firmware keeps
+the boost off. A **6 V boosted servo** (`servo_boost` config flag) needs the
+strap moved to VSOL (populate R14, remove R13); the boost is then enabled at
+6 V with `BOOST_VSEL` low (Q5 interlock clear). `BOOST_VSEL` high (12 V) always
+interlocks servo power off.
+
+(NB: the `lock.schgen.py` manifest note has R13/R14 swapped vs. the routed
+schematic — the schematic above is authoritative.)
 
 ## Toolchain
 
@@ -101,12 +106,13 @@ Actuator selection + timing are runtime config, not compile-time. Servos get
 **full power** for the drive time then release; the **duty cycle applies to the
 solenoid** hold only. Servo drive and solenoid strike times are independent.
 
-> **`servo_boost` (flag b3) — do NOT set on the current board.** It drives the
-> servo phase from the boost rail (BOOST_VSEL + SOL_BOOST_EN, with a ramp before
-> and a drain after) for higher-voltage servos. Today's hardware can't: BOOST_VSEL
-> high engages the Q5 interlock that disables servo power, so this needs a
-> boost/interlock hardware rev. Off by default; the exact VSEL level (6 V vs 12 V)
-> is finalized with that hardware.
+> **`servo_boost` (flag b3) — 6 V boosted servo.** Drives the servo phase from
+> the boost rail at **6 V** (`SOL_BOOST_EN` on, `BOOST_VSEL` **low** = Q5
+> interlock clear, so servo power stays enabled), with a boost ramp before and a
+> VSOL drain after. Requires the servo strapped to VSOL (populate R14, remove R13) and a 6 V servo.
+> **Off by default; do not set it unless the board is wired for a boosted
+> servo.** (`BOOST_VSEL` high / 12 V would fire the interlock and is never used
+> for servos.)
 
 ### Non-blocking actuation
 

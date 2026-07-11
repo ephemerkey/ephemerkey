@@ -119,9 +119,8 @@ void actuate_begin(uint8_t unlock)
         if (c->flags & CFG_SERVO2_EN)
             servo2_set_us(cfg_pos_to_us(unlock ? c->s2_unlock : c->s2_lock));
         servo_pwm_start();        /* signal on; power applied below */
-        if (s_servo_boost) {      /* higher-voltage servo: ramp the boost first */
-            boost_servo_enable();
-            status_set(ST_RAIL_12V, 1);
+        if (s_servo_boost) {      /* 6 V boosted servo: ramp the boost first */
+            boost_servo_enable(); /* 6 V, interlock clear (not RAIL_12V) */
             s_phase = PH_SVO_BOOST;
             s_end = ms_now() + SOL_BOOST_RAMP_MS;
         } else {                  /* normal servo: Vbat */
