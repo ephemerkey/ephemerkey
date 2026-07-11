@@ -12,12 +12,20 @@ The lock NACKs its first transaction after waking from power-down, so every
 read/write is retried a few times.
 """
 import sys
+import os
 import time
 import hmac
 import hashlib
 import argparse
+import secrets as _secrets
+import subprocess
 
 import serial  # pyserial
+
+# EEPROM/USERROW layout must match the firmware (config.c / secret.c).
+EE_CONFIG_OFFSET = 16    # config.c EE_CONFIG_ADDR
+USERROW_PAIRING_OFFSET = 0
+USERROW_CONFIG_OFFSET = 16
 
 ADDR = 0x60
 # DEV fallback secrets — match src/secret.c when USERROW is blank (16 bytes each).
@@ -129,10 +137,62 @@ def write_config(b, blob):
     return ok
 
 
+# --- UPDI provisioning (via pymcuprog, bypasses the authenticated I2C path) ---
+
+def parse_secret(s):
+    """32 hex chars -> 16 bytes; otherwise ASCII, padded/truncated to 16."""
+    t = s.strip()
+    if len(t) == 32:
+        try:
+            return bytes.fromhex(t)
+        except ValueError:
+            pass
+    b = t.encode()[:16]
+    return b + b"\x00" * (16 - len(b))
+
+
+def updi_write(pymcuprog, port, memtype, offset, data):
+    cmd = (pymcuprog.split()
+           + ["write", "-d", "attiny1616", "-t", "uart", "-u", port,
+              "-m", memtype, "-o", str(offset), "-l"]
+           + ["0x%02X" % b for b in data])
+    print("  $ " + " ".join(cmd))
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip().splitlines()
+    if r.returncode != 0:
+        print("    " + (out[-1] if out else "failed"))
+    return r.returncode == 0
+
+
+def provision_keys(args):
+    if args.random:
+        pair, conf = _secrets.token_bytes(16), _secrets.token_bytes(16)
+    else:
+        pair, conf = parse_secret(args.pairing_secret), parse_secret(args.config_secret)
+    print("pairing secret: " + pair.hex())
+    print("config  secret: " + conf.hex())
+    # USERROW is one 32-byte page: pairing[0:16] ‖ config[16:32], written together.
+    ok = updi_write(args.pymcuprog, args.updi_port, "user_row",
+                    USERROW_PAIRING_OFFSET, pair + conf)
+    print("provision keys:", "OK" if ok else "FAILED")
+    print("** record these — the ephemerkey master must use the SAME secrets **")
+
+
+def provision_config(args):
+    blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
+                        args.s1_lock, args.s1_unlock, s2_lock_us=1000, s2_unlock_us=2000,
+                        servo_ms=args.servo_ms, strike_ms=args.strike_ms,
+                        hold_ms=args.hold_ms, hold_duty=args.hold_duty)
+    print("config blob: " + blob.hex())
+    ok = updi_write(args.pymcuprog, args.updi_port, "eeprom", EE_CONFIG_OFFSET, blob)
+    print("provision config:", "OK" if ok else "FAILED")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("action",
-                    choices=["status", "unlock", "lock", "nonce", "getconfig", "setconfig"])
+                    choices=["status", "unlock", "lock", "nonce", "getconfig", "setconfig",
+                             "provision-keys", "provision-config", "provision-all"])
     ap.add_argument("--port", default="/dev/ttyUSB1")
     ap.add_argument("--baud", type=int, default=57600)
     # setconfig knobs
@@ -141,11 +201,33 @@ def main():
     ap.add_argument("--solenoid", type=int, default=0)
     ap.add_argument("--s1-lock", type=int, default=1000)
     ap.add_argument("--s1-unlock", type=int, default=2000)
+    ap.add_argument("--s2-lock", type=int, default=1000)
+    ap.add_argument("--s2-unlock", type=int, default=2000)
     ap.add_argument("--servo-ms", type=int, default=600)
     ap.add_argument("--strike-ms", type=int, default=50)
     ap.add_argument("--hold-ms", type=int, default=200)
     ap.add_argument("--hold-duty", type=int, default=128)
+    # provisioning / secrets (also used by the I2C actions so they match USERROW)
+    ap.add_argument("--updi-port", default="/dev/ttyUSB0")
+    ap.add_argument("--pymcuprog", default="pymcuprog",
+                    help="pymcuprog invocation, e.g. 'uvx pymcuprog'")
+    ap.add_argument("--pairing-secret", default="ephemerkey-dev01",
+                    help="16-byte ASCII or 32 hex chars")
+    ap.add_argument("--config-secret", default="ephemerkey-cfg01")
+    ap.add_argument("--random", action="store_true", help="provision-keys: generate random")
     args = ap.parse_args()
+
+    # Make the I2C actions use the same secrets we'd provision (default = DEV).
+    global SECRET, CONFIG_SECRET
+    SECRET = parse_secret(args.pairing_secret)
+    CONFIG_SECRET = parse_secret(args.config_secret)
+
+    if args.action.startswith("provision"):
+        if args.action in ("provision-keys", "provision-all"):
+            provision_keys(args)
+        if args.action in ("provision-config", "provision-all"):
+            provision_config(args)
+        return
 
     b = Bridge(args.port, args.baud)
 
@@ -159,7 +241,8 @@ def main():
     elif args.action == "setconfig":
         show_config(b)
         blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
-                            args.s1_lock, args.s1_unlock, s2_lock_us=1000, s2_unlock_us=2000,
+                            args.s1_lock, args.s1_unlock,
+                            s2_lock_us=args.s2_lock, s2_unlock_us=args.s2_unlock,
                             servo_ms=args.servo_ms, strike_ms=args.strike_ms,
                             hold_ms=args.hold_ms, hold_duty=args.hold_duty)
         write_config(b, blob)
