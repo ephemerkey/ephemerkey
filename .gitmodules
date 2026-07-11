@@ -1,0 +1,3 @@
+[submodule "firmware/smalltotp"]
+	path = firmware/smalltotp
+	url = git@github.com:theatrus/smalltotp.git

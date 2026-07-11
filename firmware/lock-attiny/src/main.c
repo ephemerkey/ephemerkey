@@ -1,107 +1,198 @@
 /*
  * ephemerkey lock board — ATtiny1616 firmware
- * Bringup stage 3: servo + gated 12 V solenoid, mutually exclusive rails.
+ * Authenticated I2C lock: HMAC-SHA1 challenge-response over TWI0 (target @0x60).
  *
- * One cycle, repeated forever:
- *   1. SERVO   — both servos actuate on battery voltage (boost off, VSOL~Vbat).
- *   2.           servo power off.
- *   3. BOOST    — enable the MT3608 to +12 V; wait 500 ms to ramp + charge C5.
- *   4. SOLENOID — drive the coil for ~10 s: full-power strike, then 50 % hold.
- *   5. DRAIN    — disable the boost with the solenoid STILL conducting, so the
- *                 12 V on VSOL bleeds through the coil back to ~Vbat; only THEN
- *                 release the solenoid. This is mandatory: VSOL is the servo's
- *                 supply, so it must be at Vbat before the servo runs again.
+ * Architecture (per hardware/lock/README.md):
+ *   POWER-DOWN sleep  --(I2C START wakes on TWI address match; verified to wake
+ *   from power-down)-->  ISR services the register protocol (STATUS/NONCE/
+ *   COMMAND)  -->  main verifies the HMAC and actuates  -->  back to sleep.
  *
- * The boost and the servo supply are never energised at once — enforced in
- * firmware by this ordering and in hardware by the Q5 interlock (BOOST_VSEL).
+ * Protocol:
+ *   1. Master reads NONCE (0x01) -> lock arms a fresh 16-byte nonce.
+ *   2. Master writes COMMAND (0x10) = cmd ‖ HMAC-SHA1(secret, nonce ‖ cmd).
+ *   3. Lock recomputes, constant-time compares, burns the nonce (replay-proof),
+ *      and actuates (UNLOCK/LOCK). STATUS reports door/bolt/busy/last-cmd-ok.
  *
- * Status LED D1 (PC3) blinks at 1 Hz throughout via the RTC PIT as an
- * "alive" beacon, independent of the phase sequence.
+ * The heavy work (HMAC ~hundreds of us, actuation seconds) runs in main, not the
+ * ISR, so the bus isn't stretched. The LED gives brief activity feedback.
  *
- * Clock: reset default (20 MHz / 6 = 3.33 MHz); F_CPU must match.
+ * NOTE: compile+flash verified; live protocol verification is deferred to the
+ * STM32 master (its I2C/HMAC side isn't implemented yet).
  */
-
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/sleep.h>
 #include <util/delay.h>
+#include <string.h>
 
+#include "lock_config.h"
+#include "lock_twi.h"
+#include "nonce.h"
+#include "secret.h"
+#include "hall.h"
+#include "actuate.h"
 #include "servo.h"
 #include "power.h"
 #include "solenoid.h"
+#include "sha1.h"
+#include "hmac_sha1.h"
 
-#define LED_PIN         PIN3_bm      /* PC3 */
+/* The COMMAND payload is exactly cmd(1) + HMAC-SHA1(20); keep the RX buffer and
+ * the length check in lockstep with the crypto so neither can overflow. */
+_Static_assert(CMD_MAXLEN == 1u + SHA1_DIGEST_SIZE, "CMD_MAXLEN must equal cmd+HMAC");
 
-#define SERVO_MOVE_MS   500          /* dwell at each servo endpoint      */
-#define BOOST_RAMP_MS   500          /* boost settle before the strike    */
-#define SOL_STRIKE_MS   50           /* full-power pull-in                 */
-#define SOL_HOLD_MS     9950         /* 50 % hold -> ~10 s total actuation */
-#define VSOL_DRAIN_MS   500          /* bleed 12 V off VSOL before release */
-#define CYCLE_GAP_MS    500          /* settle before the next servo phase */
+#define LED_PIN   PIN3_bm       /* PC3 */
 
-/* LED heartbeat, fully interrupt-driven so it survives the blocking phases. */
-ISR(RTC_PIT_vect)
+/* Sleep mode. IDLE for bringup: the TWI clock keeps running so the target
+ * answers instantly — no wake-from-power-down first-NACK and no bus-wedge/UPDI
+ * trap. POWER-DOWN (~0.1 uA) is the deployment target, to re-enable once the
+ * protocol is proven and the wake path is hardened. */
+#ifndef LOCK_SLEEP_MODE
+#define LOCK_SLEEP_MODE   SLEEP_MODE_IDLE
+#endif
+
+static void led_init(void) { PORTC.OUTCLR = LED_PIN; PORTC.DIRSET = LED_PIN; }
+
+static void led_pulse(uint8_t n)
 {
-    RTC.PITINTFLAGS = RTC_PI_bm;
-    PORTC.OUTTGL    = LED_PIN;
+    while (n--) {
+        PORTC.OUTSET = LED_PIN; _delay_ms(60);
+        PORTC.OUTCLR = LED_PIN; _delay_ms(120);
+    }
 }
 
-static void led_init(void)
+/* twi_status is written only by main, so this RMW is safe against the ISR
+ * (which only reads it). */
+static void status_bit(uint8_t bit, uint8_t on)
 {
-    PORTC.OUTCLR = LED_PIN;
-    PORTC.DIRSET = LED_PIN;
+    if (on) twi_status |= bit; else twi_status &= (uint8_t)~bit;
 }
 
-static void pit_init(void)
+static void refresh_hall(void)
 {
-    RTC.CLKSEL     = RTC_CLKSEL_INT32K_gc;
-    RTC.PITINTCTRL = RTC_PI_bm;
-    while (RTC.PITSTATUS & RTC_CTRLBUSY_bm) { }
-    RTC.PITCTRLA   = RTC_PERIOD_CYC16384_gc | RTC_PITEN_bm;
+    uint8_t h = hall_read();
+    uint8_t s = twi_status & (uint8_t)~(ST_DOOR_CLOSED | ST_BOLT_LOCKED);
+    if (h & HALL_DOOR_CLOSED) s |= ST_DOOR_CLOSED;
+    if (h & HALL_BOLT_LOCKED) s |= ST_BOLT_LOCKED;
+    twi_status = s;
 }
 
-/* One dual-servo move: valid pulses first, then power the shared VSERVO rail,
- * let both travel, then cut power and stop the signals. */
-static void servo_move(uint16_t s1_us, uint16_t s2_us)
+/* Verify the pending COMMAND and, if authentic, actuate. */
+static void service_command(void)
 {
-    servo1_set_us(s1_us);
-    servo2_set_us(s2_us);
-    servo_pwm_start();
-    servo_power(true);          /* VSERVO on (battery voltage), both connectors */
-    _delay_ms(SERVO_MOVE_MS);
-    servo_power(false);
-    servo_pwm_stop();
+    uint8_t buf[CMD_MAXLEN], rawlen, n, armed, nonce[NONCE_LEN];
+
+    cli();
+    rawlen = twi_cmd_len;                            /* true count, saturated <= CMD_MAXLEN+1 */
+    n = (rawlen > CMD_MAXLEN) ? CMD_MAXLEN : rawlen; /* clamp the copy length */
+    memcpy(buf, twi_cmd_buf, n);                     /* n <= CMD_MAXLEN == sizeof(buf) */
+    armed = twi_nonce_armed;
+    memcpy(nonce, twi_armed_nonce, NONCE_LEN);
+    twi_cmd_pending = 0;
+    twi_nonce_armed = 0;               /* single-use: burn regardless of outcome */
+    sei();
+
+    /* Require EXACTLY cmd(1) + HMAC(20) — reject short or over-long writes. */
+    if (!armed || rawlen != 1u + SHA1_DIGEST_SIZE) {
+        status_bit(ST_LAST_CMD_OK, 0);
+        led_pulse(3);
+        return;
+    }
+
+    uint8_t cmd = buf[0];
+    uint8_t secret[LOCK_SECRET_LEN];
+    secret_get(secret);
+
+    uint8_t msg[NONCE_LEN + 1];
+    memcpy(msg, nonce, NONCE_LEN);
+    msg[NONCE_LEN] = cmd;
+
+    uint8_t mac[SHA1_DIGEST_SIZE];
+    hmac_sha1(secret, LOCK_SECRET_LEN, msg, NONCE_LEN + 1, mac);
+
+#if LOCK_DEBUG
+    memcpy(twi_dbg + NONCE_LEN, nonce, NONCE_LEN);   /* nonce this verify used */
+#endif
+
+    if (!ct_equal(mac, &buf[1], SHA1_DIGEST_SIZE) ||
+        (cmd != CMD_UNLOCK && cmd != CMD_LOCK)) {
+        status_bit(ST_LAST_CMD_OK, 0);
+        led_pulse(3);                  /* reject */
+        return;
+    }
+
+    /* Authentic: actuate. */
+    status_bit(ST_BUSY, 1);
+#if LOCK_ACTUATOR == ACTUATOR_SOLENOID
+    if (cmd == CMD_UNLOCK) {
+        status_bit(ST_RAIL_12V, 1);
+        actuate_unlock();
+        status_bit(ST_RAIL_12V, 0);
+    }                                  /* LOCK: momentary solenoid no-op */
+#else
+    if (cmd == CMD_UNLOCK) actuate_unlock(); else actuate_lock();
+#endif
+    status_bit(ST_BUSY, 0);
+    status_bit(ST_LAST_CMD_OK, 1);
+    refresh_hall();
+    led_pulse(1);                      /* ack */
 }
 
 int main(void)
 {
     led_init();
-    power_init();               /* boost off, VSEL low, interlock clear — FIRST */
-    servo_init();               /* servo power off, PWM configured */
-    sol_init();                 /* Q1 off */
-    pit_init();
+    power_init();                      /* boost off, interlock clear (FIRST) */
+    servo_init();
+    sol_init();
+    hall_init();
+    actuate_init();
+    nonce_init();
 
-    sei();                      /* enable the LED heartbeat */
+    twi_status = 0;
+#if LOCK_ACTUATOR == ACTUATOR_SERVO
+    twi_status |= ST_ACTUATOR;
+#endif
+
+    nonce_next(twi_next_nonce);        /* pre-arm the first challenge */
+    twi_target_init(LOCK_I2C_ADDR);
+    refresh_hall();
+
+    sei();
+
+    /* Programming/recovery window: stay AWAKE (UPDI reachable) for ~8 s at every
+     * reset before entering continuous power-down — a chip in uninterrupted
+     * power-down is hard to re-init over UPDI. LED flutters ~2.5 Hz to show the
+     * window; I2C is already live and serviced here too. */
+    for (uint8_t i = 0; i < 40; i++) {
+        PORTC.OUTTGL = LED_PIN;
+        _delay_ms(200);
+        if (twi_nonce_consumed) { twi_nonce_consumed = 0; nonce_next(twi_next_nonce); }
+        if (twi_cmd_pending)    { service_command(); }
+    }
+    PORTC.OUTCLR = LED_PIN;
+
+    set_sleep_mode(LOCK_SLEEP_MODE);   /* IDLE (bringup) — see LOCK_SLEEP_MODE */
+    sleep_enable();
 
     for (;;) {
-        /* 1. SERVO phase — both servos, opposite phase, on battery voltage. */
-        servo_move(SERVO_MAX_US, SERVO_MIN_US);
-        servo_move(SERVO_MIN_US, SERVO_MAX_US);
+        if (twi_nonce_consumed) {
+            twi_nonce_consumed = 0;
+            nonce_next(twi_next_nonce); /* prepare the next challenge */
+        }
+        if (twi_cmd_pending) {
+            service_command();
+        }
+        refresh_hall();                /* keep door/bolt fresh for next STATUS */
 
-        /* 2. servo power is already off (servo_move leaves it off). */
-
-        /* 3. BOOST up to +12 V and let the rail settle. */
-        boost_12v_enable();
-        _delay_ms(BOOST_RAMP_MS);
-
-        /* 4. SOLENOID: strike then hold (~10 s). Leaves Q1 conducting. */
-        sol_peak_and_hold(SOL_STRIKE_MS, SOL_HOLD_MS);
-
-        /* 5. DRAIN: boost off while the solenoid still conducts, so 12 V bleeds
-         *    off VSOL down to ~Vbat; only then release the coil. */
-        boost_disable();
-        _delay_ms(VSOL_DRAIN_MS);
-        sol_off();
-
-        _delay_ms(CYCLE_GAP_MS);
+        /* Race-free sleep: only sleep if no work arrived while we were busy
+         * (e.g. a STOP interrupt during refresh_hall). sei() + sleep is atomic
+         * on AVR — an interrupt can't fire between them. */
+        cli();
+        if (!twi_cmd_pending && !twi_nonce_consumed) {
+            sei();
+            sleep_cpu();
+        } else {
+            sei();
+        }
     }
 }

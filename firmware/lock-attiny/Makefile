@@ -10,7 +10,13 @@ PORT    ?= /dev/ttyUSB0       # Adafruit UPDI Friend (CH340)
 
 TARGET  := lock-attiny
 BUILD   := build
-SRCS    := $(wildcard src/*.c)
+
+# smalltotp — HMAC-SHA1 + SHA1 shared with the STM32 side. Vendored as a git
+# submodule at firmware/smalltotp (run: git submodule update --init).
+SMALLTOTP ?= ../smalltotp
+CRYPTO_SRCS := $(SMALLTOTP)/src/sha1.c $(SMALLTOTP)/src/hmac_sha1.c
+
+SRCS    := $(wildcard src/*.c) $(CRYPTO_SRCS)
 
 CC      := avr-gcc
 OBJCOPY := avr-objcopy
@@ -21,7 +27,11 @@ PROG_ARGS := -d $(MCU) -t uart -u $(PORT)
 
 CFLAGS  := -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -flto \
            -Wall -Wextra -std=gnu11 \
-           -ffunction-sections -fdata-sections
+           -ffunction-sections -fdata-sections \
+           -Isrc -I$(SMALLTOTP)/include
+# Enable the debug register (REG_DEBUG 0x11) for testharness/lock_debug.py:
+#   make LOCK_DEBUG=1 flash        (never ship a LOCK_DEBUG build)
+CFLAGS  += $(if $(LOCK_DEBUG),-DLOCK_DEBUG=$(LOCK_DEBUG))
 LDFLAGS := -mmcu=$(MCU) -flto -Wl,--gc-sections
 
 ELF     := $(BUILD)/$(TARGET).elf
