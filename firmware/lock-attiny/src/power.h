@@ -28,4 +28,10 @@ void boost_12v_enable(void);
  * it through the solenoid before the next servo phase). */
 void boost_disable(void);
 
+/* Higher-voltage servos (CFG_SERVO_BOOST): raise the servo rail via the boost.
+ * ** Not usable on current hardware ** — asserting BOOST_VSEL engages the Q5
+ * interlock that disables servo power. Kept behind the config flag for a future
+ * hardware rev; identical signal assertion to boost_12v_enable today. */
+void boost_servo_enable(void);
+
 #endif /* POWER_H */

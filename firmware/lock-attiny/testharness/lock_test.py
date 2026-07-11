@@ -103,11 +103,12 @@ def us_to_pos(us):
     return max(0, min(255, round((us - 500) * 255 / 2000)))
 
 
-def build_config(servo1=True, servo2=False, solenoid=False,
+def build_config(servo1=True, servo2=False, solenoid=False, servo_boost=False,
                  s1_lock_us=1000, s1_unlock_us=2000,
                  s2_lock_us=1000, s2_unlock_us=2000,
                  servo_ms=600, strike_ms=50, hold_ms=200, hold_duty=128):
-    flags = (0x01 if servo1 else 0) | (0x02 if servo2 else 0) | (0x04 if solenoid else 0)
+    flags = ((0x01 if servo1 else 0) | (0x02 if servo2 else 0)
+             | (0x04 if solenoid else 0) | (0x08 if servo_boost else 0))
     return bytes([
         CFG_MAGIC, flags,
         us_to_pos(s1_lock_us), us_to_pos(s1_unlock_us),
@@ -199,6 +200,8 @@ def main():
     ap.add_argument("--servo1", type=int, default=1)
     ap.add_argument("--servo2", type=int, default=0)
     ap.add_argument("--solenoid", type=int, default=0)
+    ap.add_argument("--servo-boost", type=int, default=0,
+                    help="higher-voltage servo via boost — NOT for current hardware")
     ap.add_argument("--s1-lock", type=int, default=1000)
     ap.add_argument("--s1-unlock", type=int, default=2000)
     ap.add_argument("--s2-lock", type=int, default=1000)
@@ -241,6 +244,7 @@ def main():
     elif args.action == "setconfig":
         show_config(b)
         blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
+                            bool(args.servo_boost),
                             args.s1_lock, args.s1_unlock,
                             s2_lock_us=args.s2_lock, s2_unlock_us=args.s2_unlock,
                             servo_ms=args.servo_ms, strike_ms=args.strike_ms,

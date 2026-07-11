@@ -85,20 +85,28 @@ re-unlock is fine).
 - **Anti-replay:** the armed nonce is single-use *and* derived from a monotonic
   EEPROM counter (survives resets/power loss; no TRNG).
 
-### Programmable config (bit-packed, 9 bytes, persisted in EEPROM)
+### Programmable config (bit-packed, 10 bytes, persisted in EEPROM)
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | magic (0xE1) | validity guard |
-| 1 | flags | b0 servo1_en · b1 servo2_en · b2 solenoid_en |
+| 0 | magic (0xE2) | validity guard |
+| 1 | flags | b0 servo1_en · b1 servo2_en · b2 solenoid_en · b3 servo_boost |
 | 2–5 | servo1/2 lock & unlock pos | 8-bit each → 500–2500 µs |
-| 6 | primary drive time | ×10 ms (servo full-power drive / solenoid strike) |
-| 7 | solenoid hold time | ×100 ms (0 = none) |
-| 8 | solenoid hold duty | 0–255 → 0–100 % (TCD0 economizer) |
+| 6 | servo drive time | ×10 ms (full-power servo drive) |
+| 7 | solenoid strike time | ×10 ms (full pull-in) |
+| 8 | solenoid hold time | ×100 ms (0 = none) |
+| 9 | solenoid hold duty | 0–255 → 0–100 % (TCD0 economizer) |
 
 Actuator selection + timing are runtime config, not compile-time. Servos get
 **full power** for the drive time then release; the **duty cycle applies to the
-solenoid** hold only.
+solenoid** hold only. Servo drive and solenoid strike times are independent.
+
+> **`servo_boost` (flag b3) — do NOT set on the current board.** It drives the
+> servo phase from the boost rail (BOOST_VSEL + SOL_BOOST_EN, with a ramp before
+> and a drain after) for higher-voltage servos. Today's hardware can't: BOOST_VSEL
+> high engages the Q5 interlock that disables servo power, so this needs a
+> boost/interlock hardware rev. Off by default; the exact VSEL level (6 V vs 12 V)
+> is finalized with that hardware.
 
 ### Non-blocking actuation
 

@@ -45,10 +45,11 @@ static uint16_t ms_now(void)
 }
 
 /* --- phases --- */
-enum { PH_IDLE, PH_SERVO, PH_BOOST, PH_STRIKE, PH_HOLD, PH_DRAIN };
+enum { PH_IDLE, PH_SVO_BOOST, PH_SERVO, PH_SVO_DRAIN, PH_BOOST, PH_STRIKE, PH_HOLD, PH_DRAIN };
 static uint8_t  s_phase = PH_IDLE;
 static uint16_t s_end;
-static uint8_t  s_unlock;    /* target of the current cycle (for servo->solenoid chain) */
+static uint8_t  s_unlock;      /* target of the current cycle (for servo->solenoid chain) */
+static uint8_t  s_servo_boost; /* CFG_SERVO_BOOST captured at begin */
 
 static void status_set(uint8_t bit, uint8_t on)
 {
@@ -79,6 +80,13 @@ static void teardown(void)
         servo_power(false);
         servo_pwm_stop();
         break;
+    case PH_SVO_BOOST:            /* servo not powered yet, boost was on */
+    case PH_SVO_DRAIN:
+        servo_power(false);
+        servo_pwm_stop();
+        boost_disable();
+        status_set(ST_RAIL_12V, 0);
+        break;
     case PH_HOLD:
         sol_hold_stop();          /* stop TCD before the DC cleanup */
         /* FALLTHROUGH */
@@ -103,18 +111,26 @@ void actuate_begin(uint8_t unlock)
     tick_start();
     status_set(ST_BUSY, 1);
     s_unlock = unlock;
+    s_servo_boost = (c->flags & CFG_SERVO_BOOST) ? 1 : 0;
 
     if (c->flags & (CFG_SERVO1_EN | CFG_SERVO2_EN)) {
-        boost_disable();          /* servos run on Vbat */
-        status_set(ST_RAIL_12V, 0);
         if (c->flags & CFG_SERVO1_EN)
             servo1_set_us(cfg_pos_to_us(unlock ? c->s1_unlock : c->s1_lock));
         if (c->flags & CFG_SERVO2_EN)
             servo2_set_us(cfg_pos_to_us(unlock ? c->s2_unlock : c->s2_lock));
-        servo_pwm_start();
-        servo_power(true);
-        s_phase = PH_SERVO;
-        s_end = ms_now() + cfg_servo_ms();
+        servo_pwm_start();        /* signal on; power applied below */
+        if (s_servo_boost) {      /* higher-voltage servo: ramp the boost first */
+            boost_servo_enable();
+            status_set(ST_RAIL_12V, 1);
+            s_phase = PH_SVO_BOOST;
+            s_end = ms_now() + SOL_BOOST_RAMP_MS;
+        } else {                  /* normal servo: Vbat */
+            boost_disable();
+            status_set(ST_RAIL_12V, 0);
+            servo_power(true);
+            s_phase = PH_SERVO;
+            s_end = ms_now() + cfg_servo_ms();
+        }
     } else if ((c->flags & CFG_SOLENOID_EN) && unlock) {
         boost_12v_enable();
         status_set(ST_RAIL_12V, 1);
@@ -134,11 +150,31 @@ void actuate_tick(void)
     uint16_t t = ms_now();
 
     switch (s_phase) {
+    case PH_SVO_BOOST:                            /* servo rail up -> drive */
+        servo_power(true);
+        s_phase = PH_SERVO;
+        s_end = t + cfg_servo_ms();
+        break;
     case PH_SERVO:
         servo_power(false);                       /* drive time up -> release */
         servo_pwm_stop();
+        if (s_servo_boost) {                      /* drain the boosted servo rail */
+            boost_disable();
+            status_set(ST_RAIL_12V, 0);
+            s_phase = PH_SVO_DRAIN;
+            s_end = t + SOL_DRAIN_MS;
+        } else if ((c->flags & CFG_SOLENOID_EN) && s_unlock) {
+            boost_12v_enable();                   /* chain into the solenoid */
+            status_set(ST_RAIL_12V, 1);
+            s_phase = PH_BOOST;
+            s_end = t + SOL_BOOST_RAMP_MS;
+        } else {
+            finish();
+        }
+        break;
+    case PH_SVO_DRAIN:                            /* boosted rail drained */
         if ((c->flags & CFG_SOLENOID_EN) && s_unlock) {
-            boost_12v_enable();                   /* then chain into the solenoid */
+            boost_12v_enable();
             status_set(ST_RAIL_12V, 1);
             s_phase = PH_BOOST;
             s_end = t + SOL_BOOST_RAMP_MS;

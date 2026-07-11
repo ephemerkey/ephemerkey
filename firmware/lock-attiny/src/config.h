@@ -18,6 +18,12 @@
 #define CFG_SERVO1_EN    0x01
 #define CFG_SERVO2_EN    0x02
 #define CFG_SOLENOID_EN  0x04
+/* Higher-voltage servos: drive the servo phase from the BOOST rail (BOOST_VSEL
+ * "boost sel" + SOL_BOOST_EN) instead of Vbat. ** NOT usable on current
+ * hardware ** — the Q5 interlock (gate = BOOST_VSEL) disables servo power when
+ * BOOST_VSEL is high, so this needs a hardware boost/interlock rework. Off by
+ * default; do NOT set it on a board that can't do it. */
+#define CFG_SERVO_BOOST  0x08
 
 /* Packed blob — all uint8_t, so struct layout == wire layout (no padding). */
 typedef struct {
