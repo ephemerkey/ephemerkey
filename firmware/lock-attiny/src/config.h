@@ -11,8 +11,8 @@
 
 #include <stdint.h>
 
-#define CONFIG_MAGIC     0xE1
-#define CONFIG_LEN       9        /* wire + EEPROM size of the packed blob */
+#define CONFIG_MAGIC     0xE2       /* bump on layout change */
+#define CONFIG_LEN       10       /* wire + EEPROM size of the packed blob */
 
 /* flags byte */
 #define CFG_SERVO1_EN    0x01
@@ -27,7 +27,8 @@ typedef struct {
     uint8_t s1_unlock;
     uint8_t s2_lock;     /* servo2 positions */
     uint8_t s2_unlock;
-    uint8_t primary_cs;  /* primary drive time, x10 ms (servo hold / sol strike) */
+    uint8_t servo_cs;    /* servo full-power drive time, x10 ms */
+    uint8_t strike_cs;   /* solenoid strike (full pull-in) time, x10 ms */
     uint8_t hold_ds;     /* solenoid economizer hold, x100 ms (0 = none) */
     uint8_t hold_duty;   /* solenoid hold PWM duty, 0..255 -> 0..100 % */
 } config_t;
@@ -41,7 +42,8 @@ uint8_t         config_apply_blob(const uint8_t blob[CONFIG_LEN]);
 
 /* Encoding helpers. */
 uint16_t        cfg_pos_to_us(uint8_t pos);         /* 0..255 -> 500..2500 us */
-uint16_t        cfg_primary_ms(void);               /* primary_cs * 10 */
+uint16_t        cfg_servo_ms(void);                 /* servo_cs * 10 */
+uint16_t        cfg_strike_ms(void);                /* strike_cs * 10 */
 uint16_t        cfg_hold_ms(void);                  /* hold_ds * 100 */
 
 #endif /* CONFIG_H */

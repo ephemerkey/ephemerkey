@@ -19,8 +19,9 @@ static const config_t k_defaults = {
     .s1_unlock  = 191,   /* ~2000 us */
     .s2_lock    = 64,
     .s2_unlock  = 191,
-    .primary_cs = 60,    /* 600 ms */
-    .hold_ds    = 2,     /* 200 ms */
+    .servo_cs   = 60,    /* 600 ms servo drive */
+    .strike_cs  = 5,     /* 50 ms solenoid strike */
+    .hold_ds    = 2,     /* 200 ms hold */
     .hold_duty  = 128,   /* ~50 %   */
 };
 
@@ -48,5 +49,6 @@ uint16_t cfg_pos_to_us(uint8_t pos)
     return (uint16_t)(500u + ((uint32_t)pos * 2000u) / 255u);
 }
 
-uint16_t cfg_primary_ms(void) { return (uint16_t)s_cfg.primary_cs * 10u; }
-uint16_t cfg_hold_ms(void)    { return (uint16_t)s_cfg.hold_ds * 100u; }
+uint16_t cfg_servo_ms(void)  { return (uint16_t)s_cfg.servo_cs * 10u; }
+uint16_t cfg_strike_ms(void) { return (uint16_t)s_cfg.strike_cs * 10u; }
+uint16_t cfg_hold_ms(void)   { return (uint16_t)s_cfg.hold_ds * 100u; }

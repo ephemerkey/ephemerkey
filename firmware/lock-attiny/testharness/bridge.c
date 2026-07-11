@@ -86,7 +86,9 @@ static void twi_stop(void)
 static void err(uint8_t st) { uart_puts("ERR "); uart_hex8(st); uart_tx('\n'); }
 
 /* ---- line parsing ---- */
-static char line[96];
+/* Big enough for the longest command: "W 60 20 " + 30 hex bytes (config write)
+ * ~= 98 chars, plus headroom. */
+static char line[160];
 
 static uint8_t hexnib(char c)
 {

@@ -114,7 +114,7 @@ void actuate_begin(uint8_t unlock)
         servo_pwm_start();
         servo_power(true);
         s_phase = PH_SERVO;
-        s_end = ms_now() + cfg_primary_ms();
+        s_end = ms_now() + cfg_servo_ms();
     } else if ((c->flags & CFG_SOLENOID_EN) && unlock) {
         boost_12v_enable();
         status_set(ST_RAIL_12V, 1);
@@ -149,7 +149,7 @@ void actuate_tick(void)
     case PH_BOOST:                                /* rail up -> strike */
         sol_on();
         s_phase = PH_STRIKE;
-        s_end = t + cfg_primary_ms();
+        s_end = t + cfg_strike_ms();
         break;
     case PH_STRIKE:
         if (cfg_hold_ms() > 0) {                  /* -> economizer hold */
