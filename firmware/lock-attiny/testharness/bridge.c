@@ -88,7 +88,7 @@ static void err(uint8_t st) { uart_puts("ERR "); uart_hex8(st); uart_tx('\n'); }
 /* ---- line parsing ---- */
 /* Big enough for the longest command: "W 60 20 " + 30 hex bytes (config write)
  * ~= 98 chars, plus headroom. */
-static char line[160];
+static char line[320];   /* CONFIG write = "W 60 " + 86 bytes*3 ~= 263 chars */
 
 static uint8_t hexnib(char c)
 {
@@ -98,9 +98,10 @@ static uint8_t hexnib(char c)
     return 0xFF;
 }
 /* parse space-separated hex bytes from line[start..]; return count. */
-static uint8_t parse_bytes(uint8_t start, uint8_t *out, uint8_t max)
+static uint8_t parse_bytes(uint16_t start, uint8_t *out, uint8_t max)
 {
-    uint8_t n = 0, i = start;
+    uint8_t n = 0;
+    uint16_t i = start;         /* line can be >255 chars (uint16 index) */
     while (line[i] && n < max) {
         while (line[i] == ' ') i++;
         if (!line[i]) break;
@@ -152,7 +153,7 @@ int main(void)
     uart_puts("BRIDGE ready\n");
 
     for (;;) {
-        uint8_t li = 0;
+        uint16_t li = 0;        /* line index — must exceed 255 (uint16) */
         for (;;) {
             char c = (char)uart_rx();
             if (c == '\r') continue;
@@ -162,7 +163,7 @@ int main(void)
         line[li] = 0;
 
         if (line[0] == 'W' || line[0] == 'w') {
-            uint8_t buf[40];
+            uint8_t buf[100];   /* addr + reg + 85-byte CONFIG payload */
             uint8_t n = parse_bytes(1, buf, sizeof(buf));
             if (n < 1) uart_puts("ERR args\n"); else do_write(buf, n);
         } else if (line[0] == 'R' || line[0] == 'r') {
