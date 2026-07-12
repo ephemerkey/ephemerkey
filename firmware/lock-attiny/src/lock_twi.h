@@ -31,6 +31,7 @@
 
 #define CMD_UNLOCK      0x01
 #define CMD_LOCK        0x02
+#define CMD_ABORT       0x03   /* stop any in-flight cycle, everything off */
 
 #define ST_DOOR_CLOSED  0x01
 #define ST_BOLT_LOCKED  0x02

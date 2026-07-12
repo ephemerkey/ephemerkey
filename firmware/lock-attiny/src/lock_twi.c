@@ -105,7 +105,7 @@ ISR(TWI0_TWIS_vect)
                 TWI0.SCTRLB = TWI_SCMD_COMPTRANS_gc;
             } else {
                 uint8_t b = (s_tx_idx < s_tx_len) ? s_tx_buf[s_tx_idx] : 0x00;
-                s_tx_idx++;
+                if (s_tx_idx != 0xFF) s_tx_idx++;   /* saturate: no re-stream on 256+ reads */
                 TWI0.SDATA = b;
                 TWI0.SCTRLB = TWI_SCMD_RESPONSE_gc;
             }

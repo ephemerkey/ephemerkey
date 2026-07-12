@@ -101,7 +101,9 @@ static void service_command(void)
 
     if (rawlen != CMD_LEN) { status_bit(ST_LAST_CMD_OK, 0); return; }
     uint8_t cmd = buf[0];
-    if (cmd != CMD_UNLOCK && cmd != CMD_LOCK) { status_bit(ST_LAST_CMD_OK, 0); return; }
+    if (cmd != CMD_UNLOCK && cmd != CMD_LOCK && cmd != CMD_ABORT) {
+        status_bit(ST_LAST_CMD_OK, 0); return;
+    }
 
     uint8_t secret[SECRET_LEN];
     secret_get_pairing(secret);
@@ -116,7 +118,10 @@ static void service_command(void)
     if (!ct_equal(mac, &buf[1], SHA1_DIGEST_SIZE)) { status_bit(ST_LAST_CMD_OK, 0); return; }
 
     status_bit(ST_LAST_CMD_OK, 1);
-    actuate_begin(cmd == CMD_UNLOCK);        /* non-blocking; aborts any in-flight */
+    if (cmd == CMD_ABORT)
+        actuate_abort();                     /* emergency stop: everything off */
+    else
+        actuate_begin(cmd == CMD_UNLOCK);    /* non-blocking; aborts any in-flight */
 }
 
 /* CONFIG: verify config HMAC, then persist the blob. */
@@ -136,7 +141,14 @@ static void service_config(void)
     uint8_t mac[SHA1_DIGEST_SIZE];
     hmac_sha1(secret, SECRET_LEN, msg, NONCE_LEN + CONFIG_LEN, mac);
 
-    if (!ct_equal(mac, &buf[CONFIG_LEN], SHA1_DIGEST_SIZE) || !config_apply_blob(buf)) {
+    if (!ct_equal(mac, &buf[CONFIG_LEN], SHA1_DIGEST_SIZE)) {
+        status_bit(ST_LAST_CMD_OK, 0);
+        return;
+    }
+    /* Never mutate the step sequences under a live cycle: the engine reads them
+     * in place, so changing act/dur mid-step could strand an actuator on. */
+    actuate_abort();
+    if (!config_apply_blob(buf)) {
         status_bit(ST_LAST_CMD_OK, 0);
         return;
     }

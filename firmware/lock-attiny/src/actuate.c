@@ -61,23 +61,42 @@ static uint16_t ms_now(void)
 enum { RAIL_VBAT, RAIL_6V, RAIL_12V };
 
 /* --- per-step sub-phases --- */
-enum { SB_RAMP, SB_STRIKE, SB_RUN, SB_DRAIN };
+enum { SB_PREDRAIN, SB_RAMP, SB_STRIKE, SB_RUN, SB_DRAIN };
 
 #define EOFF_CONFIRM_MS  500u    /* sensor must hold the wanted state this long */
+/* Passive VSOL bleed after an abort (coil off, only the FB divider loads the
+ * rail — slow). TODO: measure the actual decay from 12 V and trim. */
+#define PREDRAIN_MS     2000u
 
 static uint8_t         s_active;       /* 0 = idle */
 static const step_t   *s_seq;          /* seq_unlock or seq_lock */
 static uint8_t         s_idx;          /* current step index */
 static uint8_t         s_sub;          /* SB_* within the current step */
-static uint16_t        s_end;          /* ms deadline for the current sub-phase */
+static uint16_t        s_t0;           /* ms when the current sub-phase began */
+static uint16_t        s_dur;          /* sub-phase length (delta — wrap-safe) */
 static uint8_t         s_rail;         /* RAIL_* for the current step */
 static uint8_t         s_sol_pwm;      /* 1 = economizer PWM hold, 0 = full DC */
 static uint8_t         s_eoff_pending; /* early-off confirm in progress */
 static uint16_t        s_eoff_at;      /* ms when the early-off condition was first met */
 
+/* Rail-hot: set whenever the boost is enabled (VSOL above ~Vbat), cleared only
+ * after a completed drain window. Persists across finish()/abort so a new cycle
+ * never powers a servo on a still-charged rail (see SB_PREDRAIN). */
+static uint8_t         s_rail_hot;
+
 static void status_set(uint8_t bit, uint8_t on)
 {
     if (on) twi_status |= bit; else twi_status &= (uint8_t)~bit;
+}
+
+/* Enter a sub-phase for `dur` ms. Elapsed time is measured as a 16-bit DELTA
+ * from s_t0, so it stays correct when g_ms wraps (65.5 s) mid-cycle — any
+ * single sub-phase is < 65.5 s even if the whole sequence is much longer. */
+static void sub_enter(uint8_t sub, uint16_t dur)
+{
+    s_sub = sub;
+    s_t0 = ms_now();
+    s_dur = dur;
 }
 
 /* Blunt all-off — safe from any state; used for abort and finish. */
@@ -103,6 +122,13 @@ static void finish(void)
     tick_stop();
 }
 
+/* Emergency stop (CMD_ABORT): unconditional — even if the engine thinks it is
+ * idle, force every actuator/rail off so nothing can stay energized. */
+void actuate_abort(void)
+{
+    finish();
+}
+
 /* Begin step `idx`: pick the rail, program the servos, and start the ramp/run. */
 static void step_enter(uint8_t idx)
 {
@@ -110,7 +136,6 @@ static void step_enter(uint8_t idx)
     const step_t *st = &s_seq[idx];
     uint8_t has_sv  = st->act & (STEP_SERVO1 | STEP_SERVO2);
     uint8_t has_sol = st->act & STEP_SOLENOID;
-    uint16_t t = ms_now();
 
     s_idx = idx;
     s_eoff_pending = 0;
@@ -128,22 +153,23 @@ static void step_enter(uint8_t idx)
     }
 
     if (s_rail == RAIL_12V) {
+        servo_power(false);                /* servo off BEFORE raising the rail */
+        servo_pwm_stop();                  /* (Q5 interlock backs this up in HW) */
         boost_12v_enable();                /* VSEL high: servo interlocked out */
+        s_rail_hot = 1;
         status_set(ST_RAIL_12V, 1);
-        s_sub = SB_RAMP;
-        s_end = t + SOL_BOOST_RAMP_MS;
+        sub_enter(SB_RAMP, SOL_BOOST_RAMP_MS);
     } else if (s_rail == RAIL_6V) {
         boost_servo_enable();              /* VSEL low -> 6 V, interlock clear */
+        s_rail_hot = 1;
         status_set(ST_RAIL_12V, 0);
         if (has_sv) servo_power(true);     /* soft-start: ride the rail up */
-        s_sub = SB_RAMP;
-        s_end = t + SOL_BOOST_RAMP_MS;
+        sub_enter(SB_RAMP, SOL_BOOST_RAMP_MS);
     } else {                               /* RAIL_VBAT (servo only) */
         boost_disable();
         status_set(ST_RAIL_12V, 0);
         if (has_sv) servo_power(true);
-        s_sub = SB_RUN;                    /* no ramp needed */
-        s_end = t + (uint16_t)st->dur_ds * 100u;
+        sub_enter(SB_RUN, (uint16_t)st->dur_ds * 100u);   /* no ramp needed */
     }
 }
 
@@ -167,12 +193,19 @@ void actuate_begin(uint8_t unlock)
     s_active = 1;
 
     if (s_seq[0].act == 0) { finish(); return; }   /* empty sequence -> nothing */
+    if (s_rail_hot) {             /* aborted mid-boost: VSOL may still be charged.
+                                   * Bleed passively (coil off) before step 0 so a
+                                   * servo is never powered on a hot rail. */
+        s_idx = 0;
+        sub_enter(SB_PREDRAIN, PREDRAIN_MS);
+        return;
+    }
     step_enter(0);
 }
 
 /* End the current RUN sub-phase: release this step's actuators, then drain (if a
  * boosted rail was up) or advance straight to the next step. */
-static void end_run(uint16_t t, uint8_t has_sv, uint8_t has_sol)
+static void end_run(uint8_t has_sv, uint8_t has_sol)
 {
     if (has_sv) { servo_power(false); servo_pwm_stop(); }
     if (has_sol && s_sol_pwm) sol_hold_stop();   /* -> PA5 DC high; coil drains VSOL */
@@ -183,8 +216,7 @@ static void end_run(uint16_t t, uint8_t has_sv, uint8_t has_sol)
     } else {
         boost_disable();
         status_set(ST_RAIL_12V, 0);
-        s_sub = SB_DRAIN;
-        s_end = t + SOL_DRAIN_MS;
+        sub_enter(SB_DRAIN, SOL_DRAIN_MS);
     }
 }
 
@@ -208,44 +240,46 @@ void actuate_tick(void)
             if (want) {
                 if (!s_eoff_pending) { s_eoff_pending = 1; s_eoff_at = ms_now(); }
                 else if ((uint16_t)(ms_now() - s_eoff_at) >= EOFF_CONFIRM_MS)
-                    s_end = ms_now();          /* force the RUN window to end now */
+                    s_dur = 0;                 /* force the RUN window to end now */
             } else {
                 s_eoff_pending = 0;            /* condition cleared -> reset confirm */
             }
         }
     }
 
-    if (ms_now() < s_end) return;             /* sub-phase not elapsed yet */
-    uint16_t t = ms_now();
+    if ((uint16_t)(ms_now() - s_t0) < s_dur)   /* wrap-safe delta compare */
+        return;                                /* sub-phase not elapsed yet */
 
     switch (s_sub) {
+    case SB_PREDRAIN:                         /* post-abort bleed done */
+        s_rail_hot = 0;
+        step_enter(0);
+        break;
     case SB_RAMP:                             /* rail reached target */
         if (has_sol) {
             sol_on();                         /* full DC (strike for both modes) */
-            if (s_sol_pwm) { s_sub = SB_STRIKE; s_end = t + cfg_strike_ms(); }
-            else           { s_sub = SB_RUN;    s_end = t + dur; }  /* 6 V combined */
+            if (s_sol_pwm) sub_enter(SB_STRIKE, cfg_strike_ms());
+            else           sub_enter(SB_RUN, dur);   /* 6 V combined */
         } else {                              /* boosted servo, already powered */
-            s_sub = SB_RUN;
-            s_end = t + dur;
+            sub_enter(SB_RUN, dur);
         }
         break;
     case SB_STRIKE:                           /* 12 V economizer: strike done */
         if (dur > 0) {
             sol_hold_start(c->hold_duty);
-            s_sub = SB_RUN;
-            s_end = t + dur;
+            sub_enter(SB_RUN, dur);
         } else {                              /* no hold -> drain */
             boost_disable();
             status_set(ST_RAIL_12V, 0);
-            s_sub = SB_DRAIN;
-            s_end = t + SOL_DRAIN_MS;
+            sub_enter(SB_DRAIN, SOL_DRAIN_MS);
         }
         break;
     case SB_RUN:
-        end_run(t, has_sv, has_sol);
+        end_run(has_sv, has_sol);
         break;
     case SB_DRAIN:                            /* VSOL bled -> release, next step */
         if (has_sol) sol_off();
+        s_rail_hot = 0;                       /* completed drain: rail back at ~Vbat */
         step_advance();
         break;
     }

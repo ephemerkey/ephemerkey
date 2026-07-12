@@ -34,18 +34,29 @@ void sol_init(void)
 void sol_on(void)  { PORTA.OUTSET = SOL_PWM_bm; }   /* DC (TCD disabled) */
 void sol_off(void) { PORTA.OUTCLR = SOL_PWM_bm; }
 
+/* BOUNDED wait for TCD's enable-sync (it has its own 20 MHz clock domain).
+ * Normally ready in a few cycles; the bound (~100 ms worst case) guarantees a
+ * stuck sync can never hang the main loop with an actuator energized — on
+ * timeout we proceed and let the FAULTCTRL/GPIO cleanup take effect anyway. */
+static void tcd_wait_enrdy(void)
+{
+    uint16_t t = 0;
+    while (!(TCD0.STATUS & TCD_ENRDY_bm))
+        if (++t == 0) break;
+}
+
 void sol_hold_start(uint8_t duty)
 {
     /* on-time = TOP - CMPBSET, so CMPBSET = TOP*(1 - duty/255). */
     TCD0.CMPBSET = (uint16_t)(SOL_TCD_TOP - ((uint32_t)SOL_TCD_TOP * duty) / 255u);
     _PROTECTED_WRITE(TCD0.FAULTCTRL, TCD_CMPBEN_bm);   /* connect WOB -> PA5 */
-    while (!(TCD0.STATUS & TCD_ENRDY_bm)) { }
+    tcd_wait_enrdy();
     TCD0.CTRLA = TCD_CLKSEL_20MHZ_gc | TCD_CNTPRES_DIV1_gc | TCD_ENABLE_bm;
 }
 
 void sol_hold_stop(void)
 {
-    while (!(TCD0.STATUS & TCD_ENRDY_bm)) { }
+    tcd_wait_enrdy();
     TCD0.CTRLA = TCD_CLKSEL_20MHZ_gc | TCD_CNTPRES_DIV1_gc;   /* disable */
     _PROTECTED_WRITE(TCD0.FAULTCTRL, 0);               /* release PA5 -> GPIO */
     PORTA.OUTSET = SOL_PWM_bm;                          /* GPIO high (drain) */

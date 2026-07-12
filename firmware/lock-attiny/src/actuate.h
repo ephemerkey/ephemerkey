@@ -21,5 +21,6 @@ void    actuate_init(void);
 void    actuate_begin(uint8_t unlock);  /* start or ABORT toward unlock(1)/lock(0) */
 void    actuate_tick(void);             /* advance the machine; call every loop */
 uint8_t actuate_busy(void);             /* 1 while a cycle is in progress */
+void    actuate_abort(void);            /* stop NOW: everything off, cycle ended */
 
 #endif /* ACTUATE_H */

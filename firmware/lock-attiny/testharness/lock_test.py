@@ -47,7 +47,7 @@ SECRET = b"ephemerkey-dev01"        # pairing (unlock/lock)
 CONFIG_SECRET = b"ephemerkey-cfg01"  # config (admin)
 
 REG_STATUS, REG_NONCE, REG_COMMAND, REG_CONFIG = 0x00, 0x01, 0x10, 0x20
-CMD_UNLOCK, CMD_LOCK = 0x01, 0x02
+CMD_UNLOCK, CMD_LOCK, CMD_ABORT = 0x01, 0x02, 0x03
 
 # config.h layout
 CFG_MAGIC = 0xE4
@@ -300,10 +300,13 @@ def provision_config(args):
 
 
 def main():
+    # Line-buffer stdout even when piped/backgrounded, so timelines are live and
+    # a killed run still shows how far it got.
+    sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
     ap.add_argument("action",
-                    choices=["status", "hall", "unlock", "lock", "nonce",
+                    choices=["status", "hall", "unlock", "lock", "abort", "nonce",
                              "getconfig", "setconfig",
                              "provision-keys", "provision-config", "provision-all"])
     ap.add_argument("--port", default="/dev/ttyUSB1")
@@ -367,15 +370,32 @@ def main():
         time.sleep(0.3)
         show_config(b)
     else:
-        cmd = CMD_UNLOCK if args.action == "unlock" else CMD_LOCK
+        cmd = {"unlock": CMD_UNLOCK, "lock": CMD_LOCK, "abort": CMD_ABORT}[args.action]
         show_status(b)
         send_command(b, cmd)
-        time.sleep(0.5)
-        for _ in range(40):          # poll until not BUSY (covers a long hold)
-            s = show_status(b)
-            if s is not None and not (s & 0x10):
+        # Poll until not BUSY, with timestamps; distinguish "no response" (comms
+        # layer dead) from BUSY (cycle running) so a wedge is attributable.
+        t0 = time.time()
+        noresp = 0
+        while time.time() - t0 < 40:
+            d = b.read_reg(REG_STATUS, 1)
+            el = time.time() - t0
+            if d is None:
+                noresp += 1
+                print("[%6.2fs] STATUS: NO RESPONSE (%d consecutive)" % (el, noresp))
+                if noresp >= 5:
+                    print("-> I2C/bridge unresponsive; giving up (comms wedge?)")
+                    break
+                continue
+            noresp = 0
+            s = d[0]
+            flags = [name for bit, name in STATUS_BITS if s & bit]
+            print("[%6.2fs] STATUS: 0x%02X  [%s]" % (el, s, ", ".join(flags) or "-"))
+            if not (s & 0x10):
                 break
             time.sleep(0.5)
+        else:
+            print("-> still BUSY after 40s: actuator wedge? try 'abort'")
 
 
 if __name__ == "__main__":
