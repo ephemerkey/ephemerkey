@@ -147,12 +147,21 @@ preserved. The LED mirrors BUSY.
 
 > **Verification status:** protocol verified **live on hardware** via the
 > RedBoard I²C bridge (`testharness/`) — unlock/lock accept with a valid HMAC,
-> reject a bad one, nonces are fresh per command, hall status reads. Sleep is
+> reject a bad one, nonces are fresh per command, hall status reads; soaked 40
+> lock/unlock pairs with aggressive mid-cycle polling. Sleep is
 > **IDLE** for bringup (`LOCK_SLEEP_MODE`): a TWI target in continuous
 > POWER-DOWN both NACK-wedges the bus and makes UPDI unreachable, so power-down
 > is deferred until the wake path is hardened. Every reset opens an ~8 s awake
 > window (LED flutter) for reliable reprogramming. STM32 master I²C+HMAC is
 > still unimplemented (it talks one-way over UART today — a known spec gap).
+
+> **⚠️ I²C during actuation:** the boost soft-starting into stalled servos
+> glitches SDA/SCL for ~0.4 s at actuation start (bus-error bursts on every
+> cycle on the bench; dev-board wiring exaggerates it, but assume nonzero on
+> any build). The lock target rides it out fine — but **the master must
+> implement bus-error recovery** (peripheral re-init / 9-clock bus-clear +
+> retry) or it can latch and go permanently deaf, as the RedBoard's ATmega TWI
+> did. Full write-up + soak/regression tool: `testharness/README.md`.
 
 ## Roadmap
 
@@ -162,6 +171,8 @@ preserved. The LED mirrors BUSY.
 - [x] I²C target + HMAC-SHA1 challenge-response (unlock/lock) + hall status
 - [x] Power-down sleep, wake on I²C
 - [ ] Live protocol test against the STM32 master (needs STM32 I²C+HMAC side)
+- [ ] STM32 master I²C driver: bus-error recovery (re-init / 9-clock bus-clear
+      + retry) — actuation glitches the bus every cycle; see testharness/README
 - [ ] Confirm hall-sensor output polarity against the real part
 - [ ] Provision USERROW secret + set UPDI lockbits
 - [ ] Fuse config: enable BOD level for actuator brown-out margin
