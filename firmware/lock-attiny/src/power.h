@@ -30,7 +30,7 @@ void boost_disable(void);
 
 /* 6 V boosted servo (CFG_SERVO_BOOST): enable the boost at 6 V (BOOST_VSEL LOW,
  * interlock clear) so the servo rail rises to ~6 V while servo power stays
- * enabled. Requires the servo strapped to VSOL (populate R14, remove R13) and a 6 V servo. Off by
+ * enabled. Requires the servo strapped to VSOL (R13, the default strap) and a 6 V servo. Off by
  * default. */
 void boost_servo_enable(void);
 

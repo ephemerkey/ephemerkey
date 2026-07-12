@@ -34,8 +34,9 @@ CONFIG_SECRET = b"ephemerkey-cfg01"  # config (admin)
 
 REG_STATUS, REG_NONCE, REG_COMMAND, REG_CONFIG = 0x00, 0x01, 0x10, 0x20
 CMD_UNLOCK, CMD_LOCK = 0x01, 0x02
-CONFIG_LEN = 10
-CFG_MAGIC = 0xE2
+CONFIG_LEN = 11
+CFG_MAGIC = 0xE3
+SENSOR_SRC = {"j6": 0, "j7": 1, "off": 2}
 
 STATUS_BITS = [
     (0x01, "DOOR_CLOSED"), (0x02, "BOLT_LOCKED"), (0x04, "ACTUATOR=servo"),
@@ -104,17 +105,20 @@ def us_to_pos(us):
 
 
 def build_config(servo1=True, servo2=False, solenoid=False, servo_boost=False,
+                 door_earlyoff=False, door_src="j6", bolt_src="j7",
                  s1_lock_us=1000, s1_unlock_us=2000,
                  s2_lock_us=1000, s2_unlock_us=2000,
                  servo_ms=600, strike_ms=50, hold_ms=200, hold_duty=128):
     flags = ((0x01 if servo1 else 0) | (0x02 if servo2 else 0)
-             | (0x04 if solenoid else 0) | (0x08 if servo_boost else 0))
+             | (0x04 if solenoid else 0) | (0x08 if servo_boost else 0)
+             | (0x10 if door_earlyoff else 0))
+    sensor_map = SENSOR_SRC[door_src] | (SENSOR_SRC[bolt_src] << 2)
     return bytes([
         CFG_MAGIC, flags,
         us_to_pos(s1_lock_us), us_to_pos(s1_unlock_us),
         us_to_pos(s2_lock_us), us_to_pos(s2_unlock_us),
         min(255, servo_ms // 10), min(255, strike_ms // 10),
-        min(255, hold_ms // 100), hold_duty,
+        min(255, hold_ms // 100), hold_duty, sensor_map,
     ])
 
 
@@ -122,10 +126,24 @@ def show_config(b):
     d = b.read_reg(REG_CONFIG, CONFIG_LEN)
     if d is None:
         print("CONFIG: no response"); return None
+    src = {0: "J6", 1: "J7", 2: "off"}
     print("CONFIG: " + d.hex()
-          + "  (magic=0x%02X flags=0x%02X servo=%dms strike=%dms hold=%dms duty=%d)"
-          % (d[0], d[1], d[6] * 10, d[7] * 10, d[8] * 100, d[9]))
+          + "  (magic=0x%02X flags=0x%02X servo=%dms strike=%dms hold=%dms duty=%d"
+            " door<-%s bolt<-%s)"
+          % (d[0], d[1], d[6] * 10, d[7] * 10, d[8] * 100, d[9],
+             src.get(d[10] & 3, "?"), src.get((d[10] >> 2) & 3, "?")))
     return d
+
+
+def show_hall(b):
+    d = b.read_reg(REG_STATUS, 1)
+    if d is None:
+        print("HALL: no response"); return None
+    s = d[0]
+    print("HALL: door=%s  bolt=%s  (status 0x%02X)"
+          % ("CLOSED" if s & 0x01 else "OPEN",
+             "LOCKED" if s & 0x02 else "UNLOCKED", s))
+    return s
 
 
 def write_config(b, blob):
@@ -179,11 +197,20 @@ def provision_keys(args):
     print("** record these — the ephemerkey master must use the SAME secrets **")
 
 
+def blob_from_args(args):
+    return build_config(
+        servo1=bool(args.servo1), servo2=bool(args.servo2),
+        solenoid=bool(args.solenoid), servo_boost=bool(args.servo_boost),
+        door_earlyoff=bool(args.door_earlyoff),
+        door_src=args.door_src, bolt_src=args.bolt_src,
+        s1_lock_us=args.s1_lock, s1_unlock_us=args.s1_unlock,
+        s2_lock_us=args.s2_lock, s2_unlock_us=args.s2_unlock,
+        servo_ms=args.servo_ms, strike_ms=args.strike_ms,
+        hold_ms=args.hold_ms, hold_duty=args.hold_duty)
+
+
 def provision_config(args):
-    blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
-                        args.s1_lock, args.s1_unlock, s2_lock_us=1000, s2_unlock_us=2000,
-                        servo_ms=args.servo_ms, strike_ms=args.strike_ms,
-                        hold_ms=args.hold_ms, hold_duty=args.hold_duty)
+    blob = blob_from_args(args)
     print("config blob: " + blob.hex())
     ok = updi_write(args.pymcuprog, args.updi_port, "eeprom", EE_CONFIG_OFFSET, blob)
     print("provision config:", "OK" if ok else "FAILED")
@@ -192,7 +219,8 @@ def provision_config(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("action",
-                    choices=["status", "unlock", "lock", "nonce", "getconfig", "setconfig",
+                    choices=["status", "hall", "unlock", "lock", "nonce",
+                             "getconfig", "setconfig",
                              "provision-keys", "provision-config", "provision-all"])
     ap.add_argument("--port", default="/dev/ttyUSB1")
     ap.add_argument("--baud", type=int, default=57600)
@@ -210,6 +238,12 @@ def main():
     ap.add_argument("--strike-ms", type=int, default=50)
     ap.add_argument("--hold-ms", type=int, default=200)
     ap.add_argument("--hold-duty", type=int, default=128)
+    ap.add_argument("--door-earlyoff", type=int, default=0,
+                    help="solenoid: cut the hold 500 ms after the door opens")
+    ap.add_argument("--door-src", choices=["j6", "j7", "off"], default="j6",
+                    help="which sensor drives DOOR_CLOSED (and door-earlyoff)")
+    ap.add_argument("--bolt-src", choices=["j6", "j7", "off"], default="j7",
+                    help="which sensor drives BOLT_LOCKED")
     # provisioning / secrets (also used by the I2C actions so they match USERROW)
     ap.add_argument("--updi-port", default="/dev/ttyUSB0")
     ap.add_argument("--pymcuprog", default="pymcuprog",
@@ -241,15 +275,11 @@ def main():
         print("NONCE:", d.hex() if d else "no response")
     elif args.action == "getconfig":
         show_config(b)
+    elif args.action == "hall":
+        show_hall(b)
     elif args.action == "setconfig":
         show_config(b)
-        blob = build_config(bool(args.servo1), bool(args.servo2), bool(args.solenoid),
-                            bool(args.servo_boost),
-                            args.s1_lock, args.s1_unlock,
-                            s2_lock_us=args.s2_lock, s2_unlock_us=args.s2_unlock,
-                            servo_ms=args.servo_ms, strike_ms=args.strike_ms,
-                            hold_ms=args.hold_ms, hold_duty=args.hold_duty)
-        write_config(b, blob)
+        write_config(b, blob_from_args(args))
         time.sleep(0.3)
         show_config(b)
     else:

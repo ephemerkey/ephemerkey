@@ -23,6 +23,8 @@ static const config_t k_defaults = {
     .strike_cs  = 5,     /* 50 ms solenoid strike */
     .hold_ds    = 2,     /* 200 ms hold */
     .hold_duty  = 128,   /* ~50 %   */
+    .sensor_map = (SENSOR_SRC_J6 << SENSOR_DOOR_SHIFT)   /* door <- J6 */
+                | (SENSOR_SRC_J7 << SENSOR_BOLT_SHIFT),  /* bolt <- J7 */
 };
 
 void config_init(void)
@@ -52,3 +54,5 @@ uint16_t cfg_pos_to_us(uint8_t pos)
 uint16_t cfg_servo_ms(void)  { return (uint16_t)s_cfg.servo_cs * 10u; }
 uint16_t cfg_strike_ms(void) { return (uint16_t)s_cfg.strike_cs * 10u; }
 uint16_t cfg_hold_ms(void)   { return (uint16_t)s_cfg.hold_ds * 100u; }
+uint8_t cfg_door_src(void)   { return (s_cfg.sensor_map >> SENSOR_DOOR_SHIFT) & SENSOR_SRC_MASK; }
+uint8_t cfg_bolt_src(void)   { return (s_cfg.sensor_map >> SENSOR_BOLT_SHIFT) & SENSOR_SRC_MASK; }

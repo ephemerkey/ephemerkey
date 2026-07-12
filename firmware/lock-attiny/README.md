@@ -30,19 +30,17 @@ status — running from power-down sleep, woken by the I²C bus.
 Fuses read factory-default; device is unlocked. See the bringup notes in the
 repo for the full fuse dump.
 
-### Servo power — default strap runs on battery voltage
+### Servo power — servo runs on VSOL (default strap R13)
 
 The servo supply (`VSERVO_SRC`) is strap-selected on the DRV sheet:
-**`R13`(0Ω, fitted) → BAT+** (direct battery, the default) or **`R14`(DNP) →
-VSOL** (the 6 V boost rail). So on the default board the servo runs at battery
-voltage and the boost never reaches it — for a normal servo the firmware keeps
-the boost off. A **6 V boosted servo** (`servo_boost` config flag) needs the
-strap moved to VSOL (populate R14, remove R13); the boost is then enabled at
-6 V with `BOOST_VSEL` low (Q5 interlock clear). `BOOST_VSEL` high (12 V) always
-interlocks servo power off.
+**`R13`(0Ω, fitted) → VSOL** (the boost rail, the default) or **`R14`(DNP) →
+BAT+** (direct battery, alt). So the servo is on VSOL: at ~Vbat when the boost
+is off (VSOL's passive L1+D2 path), or **6 V when boosted** (`servo_boost`
+config flag → `SOL_BOOST_EN` on, `BOOST_VSEL` low = Q5 interlock clear).
+`BOOST_VSEL` high (12 V) always interlocks servo power off.
 
-(NB: the `lock.schgen.py` manifest note has R13/R14 swapped vs. the routed
-schematic — the schematic above is authoritative.)
+(NB: an on-canvas note in `drv.kicad_sch` labels R13/R14 the other way round —
+it's stale; R13→VSOL per the `lock.schgen.py` manifest and the built board.)
 
 ## Toolchain
 
@@ -109,7 +107,7 @@ solenoid** hold only. Servo drive and solenoid strike times are independent.
 > **`servo_boost` (flag b3) — 6 V boosted servo.** Drives the servo phase from
 > the boost rail at **6 V** (`SOL_BOOST_EN` on, `BOOST_VSEL` **low** = Q5
 > interlock clear, so servo power stays enabled), with a boost ramp before and a
-> VSOL drain after. Requires the servo strapped to VSOL (populate R14, remove R13) and a 6 V servo.
+> VSOL drain after. Requires the servo strapped to VSOL (R13, the default strap) and a 6 V servo.
 > **Off by default; do not set it unless the board is wired for a boosted
 > servo.** (`BOOST_VSEL` high / 12 V would fire the interlock and is never used
 > for servos.)

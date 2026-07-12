@@ -62,13 +62,19 @@ static void status_reflect_config(void)
     status_bit(ST_ACTUATOR, servo ? 1 : 0);
 }
 
+static void hall_update(uint8_t raw)
+{
+    uint8_t s = twi_status & (uint8_t)~(ST_DOOR_CLOSED | ST_BOLT_LOCKED);
+    if (hall_src(cfg_door_src(), raw)) s |= ST_DOOR_CLOSED;  /* config-mapped */
+    if (hall_src(cfg_bolt_src(), raw)) s |= ST_BOLT_LOCKED;
+    twi_status = s;
+}
+
+/* During an actuation the sensors are already powered (actuate holds HALL_PWR),
+ * so sample them live and non-blocking; when idle, do a one-shot pulsed read. */
 static void refresh_hall(void)
 {
-    uint8_t h = hall_read();
-    uint8_t s = twi_status & (uint8_t)~(ST_DOOR_CLOSED | ST_BOLT_LOCKED);
-    if (h & HALL_DOOR_CLOSED) s |= ST_DOOR_CLOSED;
-    if (h & HALL_BOLT_LOCKED) s |= ST_BOLT_LOCKED;
-    twi_status = s;
+    hall_update(actuate_busy() ? hall_sample() : hall_read());
 }
 
 /* Snapshot the armed nonce + RX payload, burning the nonce. */
@@ -178,7 +184,7 @@ int main(void)
 
     for (;;) {
         service_pending();
-        if (!actuate_busy()) refresh_hall();   /* hall read blocks ~1 ms; skip mid-cycle */
+        refresh_hall();                        /* live sample while busy, one-shot when idle */
         led_set(actuate_busy());
 
         /* Race-free sleep: don't sleep if work arrived while we were busy. */

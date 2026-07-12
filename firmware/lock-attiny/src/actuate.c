@@ -11,6 +11,7 @@
 #include "servo.h"
 #include "power.h"
 #include "solenoid.h"
+#include "hall.h"
 
 /* --- millisecond tick (TCB0), enabled only during a cycle --- */
 static volatile uint16_t g_ms;
@@ -50,6 +51,10 @@ static uint8_t  s_phase = PH_IDLE;
 static uint16_t s_end;
 static uint8_t  s_unlock;      /* target of the current cycle (for servo->solenoid chain) */
 static uint8_t  s_servo_boost; /* CFG_SERVO_BOOST captured at begin */
+static uint8_t  s_door_open;   /* door-open early-off: tracking an open door */
+static uint16_t s_door_open_at;/* ms when the door was first seen open */
+
+#define DOOR_OFF_DELAY_MS  500u  /* door must stay open this long before cutting the hold */
 
 static void status_set(uint8_t bit, uint8_t on)
 {
@@ -66,6 +71,7 @@ static void finish(void)
     servo_pwm_stop();
     sol_off();
     boost_disable();
+    hall_power(0);                /* drop hall power; idle reads re-pulse it */
     status_set(ST_RAIL_12V, 0);
     status_set(ST_BUSY, 0);
     s_phase = PH_IDLE;
@@ -110,8 +116,10 @@ void actuate_begin(uint8_t unlock)
     teardown();                   /* abort any in-progress cycle */
     tick_start();
     status_set(ST_BUSY, 1);
+    hall_power(1);                /* keep the hall sensors powered for the cycle */
     s_unlock = unlock;
     s_servo_boost = (c->flags & CFG_SERVO_BOOST) ? 1 : 0;
+    s_door_open = 0;              /* fresh door-watch */
 
     if (c->flags & (CFG_SERVO1_EN | CFG_SERVO2_EN)) {
         if (c->flags & CFG_SERVO1_EN)
@@ -119,8 +127,9 @@ void actuate_begin(uint8_t unlock)
         if (c->flags & CFG_SERVO2_EN)
             servo2_set_us(cfg_pos_to_us(unlock ? c->s2_unlock : c->s2_lock));
         servo_pwm_start();        /* signal on; power applied below */
-        if (s_servo_boost) {      /* 6 V boosted servo: ramp the boost first */
-            boost_servo_enable(); /* 6 V, interlock clear (not RAIL_12V) */
+        if (s_servo_boost) {      /* 6 V boosted servo: soft-start */
+            boost_servo_enable(); /* VSEL low (interlock clear) + EN high (ramp to 6 V) */
+            servo_power(true);    /* power the servo NOW; it rides VSOL up Vbat->6 V */
             s_phase = PH_SVO_BOOST;
             s_end = ms_now() + SOL_BOOST_RAMP_MS;
         } else {                  /* normal servo: Vbat */
@@ -143,15 +152,33 @@ void actuate_begin(uint8_t unlock)
 void actuate_tick(void)
 {
     if (s_phase == PH_IDLE) return;
-    if (ms_now() < s_end) return;                 /* phase not elapsed yet */
-
     const config_t *c = config_get();
+
+    /* Door-open early-off: during the solenoid hold, if the chosen "door closed"
+     * sensor loses its magnet for DOOR_OFF_DELAY_MS, cut the hold and drain. */
+    if (s_phase == PH_HOLD && (c->flags & CFG_DOOR_EARLYOFF)) {
+        if (hall_src(cfg_door_src(), hall_sample())) {   /* door magnet present */
+            s_door_open = 0;                              /* door closed -> reset */
+        } else if (!s_door_open) {
+            s_door_open = 1;                             /* door just opened */
+            s_door_open_at = ms_now();
+        } else if ((uint16_t)(ms_now() - s_door_open_at) >= DOOR_OFF_DELAY_MS) {
+            sol_hold_stop();                             /* open long enough -> end hold */
+            boost_disable();
+            status_set(ST_RAIL_12V, 0);
+            s_door_open = 0;
+            s_phase = PH_DRAIN;
+            s_end = ms_now() + SOL_DRAIN_MS;
+            return;
+        }
+    }
+
+    if (ms_now() < s_end) return;                 /* phase not elapsed yet */
     uint16_t t = ms_now();
 
     switch (s_phase) {
-    case PH_SVO_BOOST:                            /* servo rail up -> drive */
-        servo_power(true);
-        s_phase = PH_SERVO;
+    case PH_SVO_BOOST:                            /* rail at 6 V, servo already powered */
+        s_phase = PH_SERVO;                      /* -> start the drive-time countdown */
         s_end = t + cfg_servo_ms();
         break;
     case PH_SERVO:
