@@ -83,7 +83,21 @@ static void twi_stop(void)
     while (TWCR & (1 << TWSTO)) if (++t == 0) break;
 }
 
-static void err(uint8_t st) { uart_puts("ERR "); uart_hex8(st); uart_tx('\n'); }
+/* Full TWI re-init. The ATmega TWI master can LATCH in an error state after a
+ * bus glitch (arbitration-lost / bus-error), failing every later START until
+ * the peripheral is disabled and re-enabled — which used to look exactly like
+ * the TARGET going deaf. Re-init on every error so one glitch can't stick. */
+static void twi_reinit(void)
+{
+    TWCR = 0;                              /* disable: clears the state machine */
+    twi_init();
+}
+
+static void err(uint8_t st)
+{
+    twi_reinit();
+    uart_puts("ERR "); uart_hex8(st); uart_tx('\n');
+}
 
 /* ---- line parsing ---- */
 /* Big enough for the longest command: "W 60 20 " + 30 hex bytes (config write)
@@ -170,8 +184,16 @@ int main(void)
             uint8_t buf[2];
             uint8_t n = parse_bytes(1, buf, 2);
             if (n < 2) uart_puts("ERR args\n"); else do_read(buf[0], buf[1]);
+        } else if (line[0] == 'L' || line[0] == 'l') {
+            /* bus forensics: raw SDA/SCL line levels (1 = released/high). A
+             * target clock-stretching or stuck mid-transaction shows 0 here. */
+            uart_puts("L SDA=");
+            uart_tx((PINC & (1 << PC4)) ? '1' : '0');
+            uart_puts(" SCL=");
+            uart_tx((PINC & (1 << PC5)) ? '1' : '0');
+            uart_tx('\n');
         } else if (line[0] == '?') {
-            uart_puts("BRIDGE: W addr b..; R addr n  (all hex)\n");
+            uart_puts("BRIDGE: W addr b..; R addr n; L (bus lines)  (all hex)\n");
         } else if (li) {
             uart_puts("ERR cmd\n");
         }

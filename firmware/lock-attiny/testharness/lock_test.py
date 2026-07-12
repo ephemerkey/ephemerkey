@@ -374,9 +374,12 @@ def main():
         show_status(b)
         send_command(b, cmd)
         # Poll until not BUSY, with timestamps; distinguish "no response" (comms
-        # layer dead) from BUSY (cycle running) so a wedge is attributable.
+        # layer dead) from BUSY (cycle running) so a wedge is attributable. Wait
+        # for BUSY to ASSERT first — the first poll can race ahead of the lock
+        # servicing the command — but don't wait forever (abort ends ~instantly).
         t0 = time.time()
         noresp = 0
+        seen_busy = False
         while time.time() - t0 < 40:
             d = b.read_reg(REG_STATUS, 1)
             el = time.time() - t0
@@ -391,9 +394,11 @@ def main():
             s = d[0]
             flags = [name for bit, name in STATUS_BITS if s & bit]
             print("[%6.2fs] STATUS: 0x%02X  [%s]" % (el, s, ", ".join(flags) or "-"))
-            if not (s & 0x10):
-                break
-            time.sleep(0.5)
+            if s & 0x10:
+                seen_busy = True
+            elif seen_busy or el > 2.0:
+                break                # done (or the cycle never started/ended fast)
+            time.sleep(0.35)
         else:
             print("-> still BUSY after 40s: actuator wedge? try 'abort'")
 
