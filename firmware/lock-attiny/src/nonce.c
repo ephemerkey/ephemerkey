@@ -4,6 +4,8 @@
 #include <avr/eeprom.h>
 #include <string.h>
 #include "sha1.h"
+#include "hmac_sha1.h"
+#include "secret.h"
 #include "nonce.h"
 
 /* 32-bit monotonic counter at EEPROM offset 0. */
@@ -31,15 +33,18 @@ void nonce_next(uint8_t out[NONCE_LEN])
         eeprom_update_dword(EE_CTR_ADDR, s_watermark);
     }
 
+    /* Keyed whitening: nonce = HMAC-SHA1(pairing_secret, counter)[0:16].
+     * Freshness/anti-replay still comes from the monotonic counter; the key
+     * only makes nonces opaque — without it, one captured nonce brute-forces
+     * the 2^32 counter space offline and predicts all future nonces. */
     const uint8_t in[4] = {
         (uint8_t)s_ctr, (uint8_t)(s_ctr >> 8),
         (uint8_t)(s_ctr >> 16), (uint8_t)(s_ctr >> 24),
     };
+    uint8_t secret[SECRET_LEN];
+    secret_get_pairing(secret);
     uint8_t digest[SHA1_DIGEST_SIZE];
-    sha1_ctx_t c;
-    sha1_init(&c);
-    sha1_update(&c, in, sizeof(in));
-    sha1_final(&c, digest);
+    hmac_sha1(secret, SECRET_LEN, in, sizeof(in), digest);
 
     memcpy(out, digest, NONCE_LEN);   /* first 16 of 20 */
 }

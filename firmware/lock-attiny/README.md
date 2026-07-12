@@ -86,7 +86,16 @@ re-unlock is fine).
   `[0:16]` (UNLOCK/LOCK) and config `[16:32]` (admin CONFIG writes). DEV
   fallbacks when USERROW is blank; provision over UPDI + set lockbits.
 - **Anti-replay:** the armed nonce is single-use *and* derived from a monotonic
-  EEPROM counter (survives resets/power loss; no TRNG).
+  EEPROM counter (survives resets/power loss; no TRNG):
+  `nonce = HMAC-SHA1(pairing_secret, counter)[0:16]`. The counter provides
+  freshness; keying with the pairing secret makes nonces opaque (an unkeyed
+  hash would let one captured nonce brute-force the 2³² counter offline and
+  predict all future nonces — no forgery, but a usage-count leak).
+  Regenerating takes ~tens of ms (software HMAC at 3.3 MHz), so back-to-back
+  NONCE reads can briefly serve the same value. Harmless: one armed slot,
+  burned on first use, and regeneration is ordered before command servicing —
+  a MAC verifies at most once (replay of the exact bytes is rejected; verified
+  live).
 
 ### Programmable config (bit-packed, 65 bytes, persisted in EEPROM)
 
