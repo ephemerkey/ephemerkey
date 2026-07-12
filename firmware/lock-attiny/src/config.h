@@ -44,8 +44,11 @@
 #define EOFF_BOLT        2u         /* the BOLT_LOCKED logical sensor */
 #define EOFF_SENSOR_MASK 0x03u
 /* bit 2: trigger edge. Clear = advance when the magnet is PRESENT (sensor
- * active); set = advance when the magnet is ABSENT (e.g. door opened). The step
- * ends EOFF_CONFIRM_MS after the condition is first met. */
+ * active); set = advance when the magnet is ABSENT (e.g. door opened).
+ * Deglitched (see actuate.c): the step must first CONFIRM the opposite state
+ * (arm), then an integrating counter of fixed-cadence samples must reach the
+ * firing level — a few transients only delay it; a sensor that never shows the
+ * opposite state (broken/disturbed) never fires and the step runs full time. */
 #define EOFF_EDGE_ABSENT 0x04u
 
 /* sensor_map: each STATUS role picks its source sensor, so either physical port

@@ -113,10 +113,20 @@ Each **step** is 5 bytes — `act`, `s1_pos`, `s2_pos`, `dur_ds`, `eoff`:
 | `eoff` | b0-1 sensor (0 none · 1 DOOR · 2 BOLT) · b2 edge (0 present / 1 absent) |
 
 A step fires any combination of its actuators **together**, for `dur_ds`, then
-the sequence advances. If `eoff` names a (logical) hall sensor, the step ends
-early — 500 ms after that sensor reaches the wanted state — and advances to the
-next step. Per-step **rail selection** (the boost makes VSOL, which also feeds
-the servo):
+the sequence advances. If `eoff` names a (logical) hall sensor, the step can
+end early — heavily deglitched, because actuation disturbs the sensors (on the
+bench the hall reads a *sustained* false-absent whenever actuators are loaded):
+
+1. **Arm** — the step must first see the *opposite* state for 5 consecutive
+   10 ms samples (e.g. `eoff=door-` requires the door seen **closed** for
+   50 ms within the step). A sensor that's disturbed from the start, broken,
+   or disconnected never arms — the step simply runs its full time.
+2. **Fire** — an integrating counter over 10 ms samples: wanted state +1,
+   opposite −5 (floor 0); fires at 50 (~500 ms clean dwell). A few transients
+   only delay it; sustained opposite readings drain it.
+
+Both layers fail toward "keep driving". Then the sequence advances. Per-step
+**rail selection** (the boost makes VSOL, which also feeds the servo):
 
 | Step drives | Rail | Solenoid |
 |---|---|---|

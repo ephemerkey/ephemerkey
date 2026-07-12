@@ -63,7 +63,22 @@ enum { RAIL_VBAT, RAIL_6V, RAIL_12V };
 /* --- per-step sub-phases --- */
 enum { SB_PREDRAIN, SB_RAMP, SB_STRIKE, SB_RUN, SB_DRAIN };
 
-#define EOFF_CONFIRM_MS  500u    /* sensor must hold the wanted state this long */
+/* Early-off deglitching — two layers, because actuation disturbs the sensors
+ * (bus/rail transients per testharness/README; on the bench the hall reads a
+ * sustained false-absent whenever actuators are loaded):
+ *   1. ARM: the step must first see the sensor in the OPPOSITE state for
+ *      EOFF_ARM_N consecutive samples (e.g. for eoff=door- the door must read
+ *      PRESENT for 50 ms). A sensor that is wrong-from-the-start, broken, or
+ *      disconnected never arms — the step just runs its full time.
+ *   2. FIRE: after arming, an INTEGRATING counter sampled at a fixed cadence:
+ *      a wanted sample adds 1, an opposite sample subtracts EOFF_MISS_PENALTY
+ *      (floor 0) — a few transients only slow it down, but sustained opposite
+ *      readings drain it. Fires at EOFF_CONFIRM_N (~500 ms clean dwell).
+ * Both fail toward "keep driving". */
+#define EOFF_SAMPLE_MS      10u  /* sampling cadence */
+#define EOFF_ARM_N           5u  /* consecutive opposite-state samples to arm */
+#define EOFF_CONFIRM_N      50u  /* integrator level that fires (~500 ms) */
+#define EOFF_MISS_PENALTY    5u  /* integrator cost of one opposite sample */
 /* Passive VSOL bleed after an abort (coil off, only the FB divider loads the
  * rail — slow). TODO: measure the actual decay from 12 V and trim. */
 #define PREDRAIN_MS     2000u
@@ -76,8 +91,10 @@ static uint16_t        s_t0;           /* ms when the current sub-phase began */
 static uint16_t        s_dur;          /* sub-phase length (delta — wrap-safe) */
 static uint8_t         s_rail;         /* RAIL_* for the current step */
 static uint8_t         s_sol_pwm;      /* 1 = economizer PWM hold, 0 = full DC */
-static uint8_t         s_eoff_pending; /* early-off confirm in progress */
-static uint16_t        s_eoff_at;      /* ms when the early-off condition was first met */
+static uint8_t         s_eoff_armed;   /* opposite state confirmed this step */
+static uint8_t         s_eoff_arm_cnt; /* consecutive opposite-state samples */
+static uint8_t         s_eoff_cnt;     /* firing integrator (0..EOFF_CONFIRM_N) */
+static uint16_t        s_eoff_last;    /* ms of the last early-off sample */
 
 /* Rail-hot: set whenever the boost is enabled (VSOL above ~Vbat), cleared only
  * after a completed drain window. Persists across finish()/abort so a new cycle
@@ -138,7 +155,10 @@ static void step_enter(uint8_t idx)
     uint8_t has_sol = st->act & STEP_SOLENOID;
 
     s_idx = idx;
-    s_eoff_pending = 0;
+    s_eoff_armed = 0;
+    s_eoff_arm_cnt = 0;
+    s_eoff_cnt = 0;
+    s_eoff_last = ms_now();
 
     /* rail + solenoid drive mode for this step */
     if (has_sol && has_sv)      { s_rail = RAIL_6V;  s_sol_pwm = 0; }  /* combined */
@@ -229,20 +249,29 @@ void actuate_tick(void)
     uint8_t has_sol = st->act & STEP_SOLENOID;
     uint16_t dur = (uint16_t)st->dur_ds * 100u;
 
-    /* Per-step early-off: during the RUN window, if the chosen logical sensor
-     * reaches the wanted state for EOFF_CONFIRM_MS, end the step early. */
+    /* Per-step early-off: during the RUN window, sample the chosen logical
+     * sensor every EOFF_SAMPLE_MS. ARM on EOFF_ARM_N consecutive opposite-state
+     * samples, then FIRE when the integrator (+1 wanted / -EOFF_MISS_PENALTY
+     * opposite) reaches EOFF_CONFIRM_N. See the deglitching note above. */
     if (s_sub == SB_RUN) {
         uint8_t sel = st->eoff & EOFF_SENSOR_MASK;
-        if (sel != EOFF_NONE) {
+        if (sel != EOFF_NONE &&
+            (uint16_t)(ms_now() - s_eoff_last) >= EOFF_SAMPLE_MS) {
+            s_eoff_last = ms_now();
             uint8_t src = (sel == EOFF_DOOR) ? cfg_door_src() : cfg_bolt_src();
             uint8_t present = hall_src(src, hall_sample()) ? 1 : 0;
             uint8_t want = (st->eoff & EOFF_EDGE_ABSENT) ? !present : present;
-            if (want) {
-                if (!s_eoff_pending) { s_eoff_pending = 1; s_eoff_at = ms_now(); }
-                else if ((uint16_t)(ms_now() - s_eoff_at) >= EOFF_CONFIRM_MS)
+            if (!s_eoff_armed) {               /* must see the opposite state first */
+                if (!want && ++s_eoff_arm_cnt >= EOFF_ARM_N)
+                    s_eoff_armed = 1;
+                else if (want)
+                    s_eoff_arm_cnt = 0;
+            } else if (want) {
+                if (++s_eoff_cnt >= EOFF_CONFIRM_N)
                     s_dur = 0;                 /* force the RUN window to end now */
             } else {
-                s_eoff_pending = 0;            /* condition cleared -> reset confirm */
+                s_eoff_cnt = (s_eoff_cnt > EOFF_MISS_PENALTY)
+                           ? (uint8_t)(s_eoff_cnt - EOFF_MISS_PENALTY) : 0;
             }
         }
     }
