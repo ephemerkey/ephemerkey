@@ -53,12 +53,3 @@ uint16_t cfg_pos_to_us(uint8_t pos)
 uint16_t cfg_strike_ms(void) { return (uint16_t)s_cfg.strike_cs * 10u; }
 uint8_t cfg_door_src(void)   { return (s_cfg.sensor_map >> SENSOR_DOOR_SHIFT) & SENSOR_SRC_MASK; }
 uint8_t cfg_bolt_src(void)   { return (s_cfg.sensor_map >> SENSOR_BOLT_SHIFT) & SENSOR_SRC_MASK; }
-
-uint8_t cfg_any_servo(void)
-{
-    for (uint8_t i = 0; i < SEQ_STEPS; i++) {
-        if (s_cfg.seq_unlock[i].act & (STEP_SERVO1 | STEP_SERVO2)) return 1;
-        if (s_cfg.seq_lock[i].act   & (STEP_SERVO1 | STEP_SERVO2)) return 1;
-    }
-    return 0;
-}

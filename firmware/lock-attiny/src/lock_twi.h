@@ -35,10 +35,11 @@
 
 #define ST_DOOR_CLOSED  0x01
 #define ST_BOLT_LOCKED  0x02
-#define ST_ACTUATOR     0x04   /* 1 = servo, 0 = solenoid */
+#define ST_ACT_SERVO    0x04   /* live: a servo is currently powered */
 #define ST_RAIL_12V     0x08
 #define ST_BUSY         0x10
 #define ST_LAST_CMD_OK  0x20
+#define ST_ACT_SOL      0x40   /* live: solenoid coil currently energized */
 
 #define HMAC_LEN        20u                    /* SHA1_DIGEST_SIZE */
 #define CMD_LEN         (1u + HMAC_LEN)        /* COMMAND payload */

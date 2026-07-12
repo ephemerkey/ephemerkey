@@ -71,7 +71,7 @@ actuator with `-DLOCK_ACTUATOR=ACTUATOR_SERVO` (default) or `ACTUATOR_SOLENOID`.
 
 | Reg | Access | Contents |
 |-----|--------|----------|
-| `0x00 STATUS`  | read  | bit0 DOOR_CLOSED · bit1 BOLT_LOCKED · bit2 ACTUATOR (1=servo) · bit3 RAIL_12V · bit4 BUSY · bit5 LAST_CMD_OK |
+| `0x00 STATUS`  | read  | bit0 DOOR_CLOSED · bit1 BOLT_LOCKED · bit2 SERVO_ON (live) · bit3 RAIL_12V · bit4 BUSY · bit5 LAST_CMD_OK · bit6 SOL_ON (live: coil energized, incl. drain) |
 | `0x01 NONCE`   | read  | fresh 16-byte nonce; **reading arms it** (single-use) |
 | `0x10 COMMAND` | write | `cmd(1) ‖ HMAC-SHA1(pairing_secret, nonce ‖ cmd)(20)`; `0x01`=UNLOCK, `0x02`=LOCK, `0x03`=ABORT (emergency stop: everything off) |
 | `0x20 CONFIG`  | write | `blob(65) ‖ HMAC-SHA1(config_secret, nonce ‖ blob)(20)` · read = current blob |

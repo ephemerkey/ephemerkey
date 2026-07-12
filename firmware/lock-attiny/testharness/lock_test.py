@@ -61,8 +61,9 @@ EOFF_DOOR, EOFF_BOLT, EOFF_EDGE_ABSENT = 1, 2, 0x04
 SENSOR_SRC = {"j6": 0, "j7": 1, "off": 2}
 
 STATUS_BITS = [
-    (0x01, "DOOR_CLOSED"), (0x02, "BOLT_LOCKED"), (0x04, "ACTUATOR=servo"),
+    (0x01, "DOOR_CLOSED"), (0x02, "BOLT_LOCKED"), (0x04, "SERVO_ON"),
     (0x08, "RAIL_12V"), (0x10, "BUSY"), (0x20, "LAST_CMD_OK"),
+    (0x40, "SOL_ON"),
 ]
 
 

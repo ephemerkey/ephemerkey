@@ -125,6 +125,8 @@ static void all_off(void)
     sol_off();
     boost_disable();
     status_set(ST_RAIL_12V, 0);
+    status_set(ST_ACT_SERVO, 0);
+    status_set(ST_ACT_SOL, 0);
 }
 
 void actuate_init(void) { s_active = 0; }
@@ -175,6 +177,7 @@ static void step_enter(uint8_t idx)
     if (s_rail == RAIL_12V) {
         servo_power(false);                /* servo off BEFORE raising the rail */
         servo_pwm_stop();                  /* (Q5 interlock backs this up in HW) */
+        status_set(ST_ACT_SERVO, 0);
         boost_12v_enable();                /* VSEL high: servo interlocked out */
         s_rail_hot = 1;
         status_set(ST_RAIL_12V, 1);
@@ -183,12 +186,12 @@ static void step_enter(uint8_t idx)
         boost_servo_enable();              /* VSEL low -> 6 V, interlock clear */
         s_rail_hot = 1;
         status_set(ST_RAIL_12V, 0);
-        if (has_sv) servo_power(true);     /* soft-start: ride the rail up */
-        sub_enter(SB_RAMP, SOL_BOOST_RAMP_MS);
+        if (has_sv) { servo_power(true); status_set(ST_ACT_SERVO, 1); }
+        sub_enter(SB_RAMP, SOL_BOOST_RAMP_MS);   /* soft-start: ride the rail up */
     } else {                               /* RAIL_VBAT (servo only) */
         boost_disable();
         status_set(ST_RAIL_12V, 0);
-        if (has_sv) servo_power(true);
+        if (has_sv) { servo_power(true); status_set(ST_ACT_SERVO, 1); }
         sub_enter(SB_RUN, (uint16_t)st->dur_ds * 100u);   /* no ramp needed */
     }
 }
@@ -227,9 +230,9 @@ void actuate_begin(uint8_t unlock)
  * boosted rail was up) or advance straight to the next step. */
 static void end_run(uint8_t has_sv, uint8_t has_sol)
 {
-    if (has_sv) { servo_power(false); servo_pwm_stop(); }
+    if (has_sv) { servo_power(false); servo_pwm_stop(); status_set(ST_ACT_SERVO, 0); }
     if (has_sol && s_sol_pwm) sol_hold_stop();   /* -> PA5 DC high; coil drains VSOL */
-    /* full-DC solenoid (combined) stays energized through the drain, then sol_off */
+    /* the coil keeps conducting through the drain (ST_ACT_SOL stays set), then sol_off */
 
     if (s_rail == RAIL_VBAT) {
         step_advance();
@@ -287,6 +290,7 @@ void actuate_tick(void)
     case SB_RAMP:                             /* rail reached target */
         if (has_sol) {
             sol_on();                         /* full DC (strike for both modes) */
+            status_set(ST_ACT_SOL, 1);
             if (s_sol_pwm) sub_enter(SB_STRIKE, cfg_strike_ms());
             else           sub_enter(SB_RUN, dur);   /* 6 V combined */
         } else {                              /* boosted servo, already powered */
@@ -307,7 +311,7 @@ void actuate_tick(void)
         end_run(has_sv, has_sol);
         break;
     case SB_DRAIN:                            /* VSOL bled -> release, next step */
-        if (has_sol) sol_off();
+        if (has_sol) { sol_off(); status_set(ST_ACT_SOL, 0); }
         s_rail_hot = 0;                       /* completed drain: rail back at ~Vbat */
         step_advance();
         break;

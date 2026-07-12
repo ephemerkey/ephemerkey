@@ -55,13 +55,6 @@ static void status_bit(uint8_t bit, uint8_t on)
     if (on) twi_status |= bit; else twi_status &= (uint8_t)~bit;
 }
 
-/* Reflect the configured actuator type into STATUS bit2 (1=servo, 0=solenoid).
- * With programmable sequences, "servo" means any step drives a servo. */
-static void status_reflect_config(void)
-{
-    status_bit(ST_ACTUATOR, cfg_any_servo() ? 1 : 0);
-}
-
 static void hall_update(uint8_t raw)
 {
     uint8_t s = twi_status & (uint8_t)~(ST_DOOR_CLOSED | ST_BOLT_LOCKED);
@@ -152,7 +145,6 @@ static void service_config(void)
         status_bit(ST_LAST_CMD_OK, 0);
         return;
     }
-    status_reflect_config();
     status_bit(ST_LAST_CMD_OK, 1);
 }
 
@@ -177,7 +169,6 @@ int main(void)
     nonce_init();
 
     twi_status = 0;
-    status_reflect_config();
     nonce_next(twi_next_nonce);
     twi_target_init(LOCK_I2C_ADDR);
     refresh_hall();

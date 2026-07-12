@@ -94,6 +94,5 @@ uint16_t        cfg_pos_to_us(uint8_t pos);         /* 0..255 -> 500..2500 us */
 uint16_t        cfg_strike_ms(void);                /* strike_cs * 10 */
 uint8_t         cfg_door_src(void);                 /* SENSOR_SRC_* for DOOR_CLOSED */
 uint8_t         cfg_bolt_src(void);                 /* SENSOR_SRC_* for BOLT_LOCKED */
-uint8_t         cfg_any_servo(void);                /* 1 if any step drives a servo */
 
 #endif /* CONFIG_H */
