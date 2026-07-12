@@ -46,13 +46,6 @@
 #define PWM_PER         ((uint16_t)(F_TCA / SERVO_FRAME_HZ - 1u))
 #define US_TO_CMP(us)   ((uint16_t)(((uint32_t)(us) * F_TCA) / 1000000UL))
 
-static uint16_t clamp_cmp(uint16_t pulse_us)
-{
-    if (pulse_us < SERVO_MIN_US) pulse_us = SERVO_MIN_US;
-    if (pulse_us > SERVO_MAX_US) pulse_us = SERVO_MAX_US;
-    return US_TO_CMP(pulse_us);
-}
-
 /* servo2 software pulse on PB4, phase-locked to the TCA0 frame. */
 ISR(TCA0_OVF_vect)
 {
@@ -84,14 +77,16 @@ void servo_init(void)
     TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV8_gc; /* configured, disabled */
 }
 
+/* No firmware clamp: the config's 8-bit position field already bounds the pulse
+ * to 500..2500 us (cfg_pos_to_us), so the caller owns the full servo range. */
 void servo1_set_us(uint16_t pulse_us)
 {
-    TCA0.SINGLE.CMP2BUF = clamp_cmp(pulse_us);     /* buffered update */
+    TCA0.SINGLE.CMP2BUF = US_TO_CMP(pulse_us);     /* buffered update */
 }
 
 void servo2_set_us(uint16_t pulse_us)
 {
-    TCA0.SINGLE.CMP1BUF = clamp_cmp(pulse_us);     /* buffered update */
+    TCA0.SINGLE.CMP1BUF = US_TO_CMP(pulse_us);     /* buffered update */
 }
 
 void servo_pwm_start(void)

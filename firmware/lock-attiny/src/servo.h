@@ -15,9 +15,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SERVO_MIN_US    600u   /* widened endpoint / "locked"   (margin off stop) */
-#define SERVO_MID_US   1500u   /* center                                         */
-#define SERVO_MAX_US   2400u   /* widened endpoint / "unlocked" (margin off stop) */
+#define SERVO_MID_US   1500u   /* center — the power-on default pulse (not a clamp) */
 
 /* Put boost + servo-power pins in their safe (off) state and configure the
  * TCA0 PWM generator for both channels. Does NOT power or move the servos. */
