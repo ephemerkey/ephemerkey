@@ -74,7 +74,7 @@ actuator with `-DLOCK_ACTUATOR=ACTUATOR_SERVO` (default) or `ACTUATOR_SOLENOID`.
 | `0x00 STATUS`  | read  | bit0 DOOR_CLOSED · bit1 BOLT_LOCKED · bit2 ACTUATOR (1=servo) · bit3 RAIL_12V · bit4 BUSY · bit5 LAST_CMD_OK |
 | `0x01 NONCE`   | read  | fresh 16-byte nonce; **reading arms it** (single-use) |
 | `0x10 COMMAND` | write | `cmd(1) ‖ HMAC-SHA1(pairing_secret, nonce ‖ cmd)(20)`; `0x01`=UNLOCK, `0x02`=LOCK |
-| `0x20 CONFIG`  | write | `blob(9) ‖ HMAC-SHA1(config_secret, nonce ‖ blob)(20)` · read = current blob |
+| `0x20 CONFIG`  | write | `blob(65) ‖ HMAC-SHA1(config_secret, nonce ‖ blob)(20)` · read = current blob |
 
 Flow: read `NONCE` → write `COMMAND`/`CONFIG` → lock recomputes the HMAC,
 **constant-time** compares, **burns the nonce** (replay-proof), then actuates or
@@ -88,37 +88,62 @@ re-unlock is fine).
 - **Anti-replay:** the armed nonce is single-use *and* derived from a monotonic
   EEPROM counter (survives resets/power loss; no TRNG).
 
-### Programmable config (bit-packed, 10 bytes, persisted in EEPROM)
+### Programmable config (bit-packed, 65 bytes, persisted in EEPROM)
+
+Actuation is a **programmable step sequence**: an ordered list of up to 6 steps
+run on UNLOCK, and an independent list run on LOCK. Header + two sequences:
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | magic (0xE2) | validity guard |
-| 1 | flags | b0 servo1_en · b1 servo2_en · b2 solenoid_en · b3 servo_boost |
-| 2–5 | servo1/2 lock & unlock pos | 8-bit each → 500–2500 µs |
-| 6 | servo drive time | ×10 ms (full-power servo drive) |
-| 7 | solenoid strike time | ×10 ms (full pull-in) |
-| 8 | solenoid hold time | ×100 ms (0 = none) |
-| 9 | solenoid hold duty | 0–255 → 0–100 % (TCD0 economizer) |
+| 0 | magic (0xE4) | validity guard |
+| 1 | flags | b0 servo_boost (servo-only steps at 6 V) |
+| 2 | solenoid strike time | ×10 ms (full pull-in, 12 V economizer) |
+| 3 | solenoid hold duty | 0–255 → 0–100 % (TCD0 economizer) |
+| 4 | sensor_map | b0-1 DOOR_CLOSED src · b2-3 BOLT_LOCKED src (0=J6, 1=J7, 2=off) |
+| 5–34  | `seq_unlock[6]` | 6 × step (5 bytes) |
+| 35–64 | `seq_lock[6]`   | 6 × step (5 bytes) |
 
-Actuator selection + timing are runtime config, not compile-time. Servos get
-**full power** for the drive time then release; the **duty cycle applies to the
-solenoid** hold only. Servo drive and solenoid strike times are independent.
+Each **step** is 5 bytes — `act`, `s1_pos`, `s2_pos`, `dur_ds`, `eoff`:
 
-> **`servo_boost` (flag b3) — 6 V boosted servo.** Drives the servo phase from
-> the boost rail at **6 V** (`SOL_BOOST_EN` on, `BOOST_VSEL` **low** = Q5
-> interlock clear, so servo power stays enabled), with a boost ramp before and a
-> VSOL drain after. Requires the servo strapped to VSOL (R13, the default strap) and a 6 V servo.
-> **Off by default; do not set it unless the board is wired for a boosted
-> servo.** (`BOOST_VSEL` high / 12 V would fire the interlock and is never used
-> for servos.)
+| Field | Encoding |
+|---|---|
+| `act` | b0 servo1 · b1 servo2 · b2 solenoid · **0 = end of sequence** |
+| `s1_pos` / `s2_pos` | 8-bit target → 500–2500 µs (per step, either direction) |
+| `dur_ds` | run time ×100 ms (servo drive / solenoid hold), 0–25.5 s |
+| `eoff` | b0-1 sensor (0 none · 1 DOOR · 2 BOLT) · b2 edge (0 present / 1 absent) |
+
+A step fires any combination of its actuators **together**, for `dur_ds`, then
+the sequence advances. If `eoff` names a (logical) hall sensor, the step ends
+early — 500 ms after that sensor reaches the wanted state — and advances to the
+next step. Per-step **rail selection** (the boost makes VSOL, which also feeds
+the servo):
+
+| Step drives | Rail | Solenoid |
+|---|---|---|
+| solenoid **+** servo | **6 V** (`BOOST_VSEL` low, interlock clear) | **full DC**, no PWM |
+| solenoid only | **12 V** (`BOOST_VSEL` high) | strike → economizer PWM hold; servo interlocked out |
+| servo + `servo_boost` | **6 V** | — |
+| servo only | Vbat (boost off) | — |
+
+> **Combined servo+solenoid** is the only way to move a servo while the solenoid
+> fires: forced to **6 V** with the solenoid at **full DC** (no economizer PWM),
+> so the shared rail can power both. Normally the two are electrically exclusive
+> (12 V solenoid interlocks servo power off).
+
+> **`servo_boost` (flag b0) — 6 V boosted servo.** Servo-only steps run off the
+> boost rail at **6 V** (`SOL_BOOST_EN` on, `BOOST_VSEL` **low** = Q5 interlock
+> clear), with a boost ramp before and a VSOL drain after. Requires the servo
+> strapped to VSOL (R13, the default strap) and a 6 V servo. **Off by default; do
+> not set it unless the board is wired for a boosted servo.**
 
 ### Non-blocking actuation
 
-Actuation runs as a **TCB0-tick-driven state machine** (`actuate.c`), never
-blocking the main loop: the machine keeps the right rails powered then turns
-them off while I²C stays fully responsive, and a new lock/unlock **aborts** the
-in-flight cycle. Boost↔servo mutual-exclusion + VSOL drain are preserved. The
-LED mirrors BUSY.
+Actuation runs as a **TCB0-tick-driven step engine** (`actuate.c`), never
+blocking the main loop: it walks the configured UNLOCK/LOCK step list, ramping
+each step's rail, driving its actuators for the step time (or until early-off),
+then draining — all while I²C stays fully responsive, and a new lock/unlock
+**aborts** the in-flight cycle. Per-step rail selection + VSOL drain are
+preserved. The LED mirrors BUSY.
 
 > **Verification status:** protocol verified **live on hardware** via the
 > RedBoard I²C bridge (`testharness/`) — unlock/lock accept with a valid HMAC,

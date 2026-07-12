@@ -55,11 +55,11 @@ static void status_bit(uint8_t bit, uint8_t on)
     if (on) twi_status |= bit; else twi_status &= (uint8_t)~bit;
 }
 
-/* Reflect the configured actuator type into STATUS bit2 (1=servo, 0=solenoid). */
+/* Reflect the configured actuator type into STATUS bit2 (1=servo, 0=solenoid).
+ * With programmable sequences, "servo" means any step drives a servo. */
 static void status_reflect_config(void)
 {
-    uint8_t servo = config_get()->flags & (CFG_SERVO1_EN | CFG_SERVO2_EN);
-    status_bit(ST_ACTUATOR, servo ? 1 : 0);
+    status_bit(ST_ACTUATOR, cfg_any_servo() ? 1 : 0);
 }
 
 static void hall_update(uint8_t raw)

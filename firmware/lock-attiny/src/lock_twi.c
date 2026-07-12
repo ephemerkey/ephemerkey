@@ -21,10 +21,9 @@ volatile uint8_t twi_nonce_armed;
 volatile uint8_t twi_nonce_consumed;
 #if LOCK_DEBUG
 uint8_t          twi_dbg[32];
-#define TX_BUF_SIZE  32
-#else
-#define TX_BUF_SIZE  NONCE_LEN
 #endif
+/* Largest read-back is the CONFIG blob (>= NONCE_LEN and the 32-byte debug). */
+#define TX_BUF_SIZE  CONFIG_LEN
 
 /* --- ISR-private transaction state --- */
 enum { RX_EXPECT_REG, RX_EXPECT_DATA };

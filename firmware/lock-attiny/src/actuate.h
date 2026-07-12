@@ -1,15 +1,16 @@
 /*
  * ephemerkey lock board — non-blocking actuator state machine (ATtiny1616)
  *
- * A config-driven state machine drives the servo(s) or solenoid+boost and turns
- * them off when done, WITHOUT blocking — it is advanced by actuate_tick() from
- * the main loop, timed by a TCB0 millisecond tick that runs only during a cycle.
- * So I2C stays responsive throughout, and a new lock/unlock aborts the current
- * cycle (actuate_begin re-targets the machine).
+ * A config-driven STEP SEQUENCE engine: actuate_begin(unlock) runs the UNLOCK or
+ * LOCK step list from config, firing each step's actuators in order and turning
+ * them off when done, WITHOUT blocking — advanced by actuate_tick() from the main
+ * loop, timed by a TCB0 millisecond tick that runs only during a cycle. So I2C
+ * stays responsive throughout, and a new lock/unlock aborts the current cycle.
  *
- * Servos: full power for the configured drive time, then released.
- * Solenoid (unlock only): boost -> strike -> economizer hold (TCD0 PWM at the
- *   configured duty) -> drain -> release. LOCK on a solenoid is a no-op.
+ * Each step drives any combination of {servo1, servo2, solenoid} with per-step
+ * servo targets, a run time, and an optional hall early-off that ends the step
+ * and advances to the next. See config.h (step_t) and actuate.c for the per-step
+ * rail selection (Vbat / 6 V / 12 V economizer).
  */
 #ifndef ACTUATE_H
 #define ACTUATE_H

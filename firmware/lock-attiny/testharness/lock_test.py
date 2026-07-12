@@ -1,18 +1,32 @@
 #!/usr/bin/env python3
 """Host-side test harness for the ephemerkey lock over the RedBoard I2C bridge.
 
-Runs the authenticated protocol (STATUS / NONCE / COMMAND) against the ATtiny1616
-lock (TWI target @ 0x60). Requires pyserial:
+Runs the authenticated protocol (STATUS / NONCE / COMMAND / CONFIG) against the
+ATtiny1616 lock (TWI target @ 0x60). Requires pyserial:
 
     uv run --with pyserial firmware/lock-attiny/testharness/lock_test.py status
     uv run --with pyserial firmware/lock-attiny/testharness/lock_test.py unlock
     uv run --with pyserial firmware/lock-attiny/testharness/lock_test.py lock
 
-The lock NACKs its first transaction after waking from power-down, so every
-read/write is retried a few times.
+Actuation is a programmable STEP SEQUENCE (see --unlock / --lock below): an
+ordered list of phases, each firing any of {servo1, servo2, solenoid} together
+with per-step servo targets, a run time, and an optional hall early-off.
+
+    STEP  = field[,field...]      (no spaces inside a step)
+    SEQ   = "STEP STEP ..."       (space-separated, up to 6 steps)
+    fields:
+      s1=<us>       drive servo1 to <us> (500..2500)
+      s2=<us>       drive servo2 to <us>
+      sol           fire the solenoid (sol+servo in one step => 6 V, full DC)
+      dur=<ms>      run time for the step (servo drive / solenoid hold)
+      eoff=door-    early-off: advance when the DOOR sensor's magnet is absent
+      eoff=door+ / eoff=bolt+ / eoff=bolt-   (+ = magnet present, - = absent)
+
+    e.g.  --unlock "s1=2000,dur=600 sol,dur=5000,eoff=door- s2=2000,dur=600"
+
+The lock NACKs its first transaction after waking, so reads/writes are retried.
 """
 import sys
-import os
 import time
 import hmac
 import hashlib
@@ -34,8 +48,16 @@ CONFIG_SECRET = b"ephemerkey-cfg01"  # config (admin)
 
 REG_STATUS, REG_NONCE, REG_COMMAND, REG_CONFIG = 0x00, 0x01, 0x10, 0x20
 CMD_UNLOCK, CMD_LOCK = 0x01, 0x02
-CONFIG_LEN = 11
-CFG_MAGIC = 0xE3
+
+# config.h layout
+CFG_MAGIC = 0xE4
+SEQ_STEPS = 6
+STEP_BYTES = 5
+CONFIG_HDR = 5
+CONFIG_LEN = CONFIG_HDR + STEP_BYTES * SEQ_STEPS * 2   # 65
+
+STEP_SERVO1, STEP_SERVO2, STEP_SOLENOID = 0x01, 0x02, 0x04
+EOFF_DOOR, EOFF_BOLT, EOFF_EDGE_ABSENT = 1, 2, 0x04
 SENSOR_SRC = {"j6": 0, "j7": 1, "off": 2}
 
 STATUS_BITS = [
@@ -104,22 +126,84 @@ def us_to_pos(us):
     return max(0, min(255, round((us - 500) * 255 / 2000)))
 
 
-def build_config(servo1=True, servo2=False, solenoid=False, servo_boost=False,
-                 door_earlyoff=False, door_src="j6", bolt_src="j7",
-                 s1_lock_us=1000, s1_unlock_us=2000,
-                 s2_lock_us=1000, s2_unlock_us=2000,
-                 servo_ms=600, strike_ms=50, hold_ms=200, hold_duty=128):
-    flags = ((0x01 if servo1 else 0) | (0x02 if servo2 else 0)
-             | (0x04 if solenoid else 0) | (0x08 if servo_boost else 0)
-             | (0x10 if door_earlyoff else 0))
+def pos_to_us(pos):
+    return round(500 + pos * 2000 / 255)
+
+
+# --- step-sequence encoding ------------------------------------------------
+
+def parse_step(tok):
+    """One step spec -> 5 bytes [act, s1_pos, s2_pos, dur_ds, eoff]."""
+    act = s1 = s2 = dur_ds = eoff = 0
+    for f in tok.split(","):
+        f = f.strip()
+        if not f:
+            continue
+        if f == "sol":
+            act |= STEP_SOLENOID
+        elif f.startswith("s1="):
+            act |= STEP_SERVO1; s1 = us_to_pos(int(f[3:]))
+        elif f.startswith("s2="):
+            act |= STEP_SERVO2; s2 = us_to_pos(int(f[3:]))
+        elif f.startswith("dur="):
+            dur_ds = min(255, round(int(f[4:]) / 100))   # ms -> x100 ms
+        elif f.startswith("eoff="):
+            v = f[5:]
+            sensor = EOFF_DOOR if v.startswith("door") else \
+                     EOFF_BOLT if v.startswith("bolt") else 0
+            if not sensor:
+                raise ValueError("eoff sensor must be door/bolt: " + f)
+            eoff = sensor | (EOFF_EDGE_ABSENT if v.endswith("-") else 0)
+        else:
+            raise ValueError("unknown step field: " + f)
+    if act == 0:
+        raise ValueError("step drives no actuator: " + tok)
+    return bytes([act, s1, s2, dur_ds, eoff])
+
+
+def parse_seq(spec):
+    """Space-separated steps -> SEQ_STEPS*5 bytes (unused steps = act 0)."""
+    steps = [parse_step(t) for t in spec.split() if t.strip()]
+    if len(steps) > SEQ_STEPS:
+        raise ValueError("too many steps (max %d): %r" % (SEQ_STEPS, spec))
+    steps += [bytes(STEP_BYTES)] * (SEQ_STEPS - len(steps))
+    return b"".join(steps)
+
+
+def build_config(unlock_seq, lock_seq, servo_boost=False,
+                 strike_ms=50, hold_duty=128, door_src="j6", bolt_src="j7"):
+    flags = 0x01 if servo_boost else 0
     sensor_map = SENSOR_SRC[door_src] | (SENSOR_SRC[bolt_src] << 2)
-    return bytes([
-        CFG_MAGIC, flags,
-        us_to_pos(s1_lock_us), us_to_pos(s1_unlock_us),
-        us_to_pos(s2_lock_us), us_to_pos(s2_unlock_us),
-        min(255, servo_ms // 10), min(255, strike_ms // 10),
-        min(255, hold_ms // 100), hold_duty, sensor_map,
-    ])
+    hdr = bytes([CFG_MAGIC, flags, min(255, strike_ms // 10), hold_duty, sensor_map])
+    blob = hdr + parse_seq(unlock_seq) + parse_seq(lock_seq)
+    assert len(blob) == CONFIG_LEN, len(blob)
+    return blob
+
+
+def decode_step(b):
+    act, s1, s2, dur, eoff = b
+    if act == 0:
+        return None
+    parts = []
+    if act & STEP_SERVO1: parts.append("s1=%dus" % pos_to_us(s1))
+    if act & STEP_SERVO2: parts.append("s2=%dus" % pos_to_us(s2))
+    if act & STEP_SOLENOID: parts.append("sol")
+    txt = "+".join(parts) + " %dms" % (dur * 100)
+    sel = eoff & 0x03
+    if sel:
+        txt += " eoff=%s%s" % ("door" if sel == EOFF_DOOR else "bolt",
+                               "-" if eoff & EOFF_EDGE_ABSENT else "+")
+    return txt
+
+
+def decode_seq(blob):
+    out = []
+    for i in range(SEQ_STEPS):
+        s = decode_step(blob[i * STEP_BYTES:(i + 1) * STEP_BYTES])
+        if s is None:
+            break
+        out.append("[%s]" % s)
+    return " ".join(out) or "(empty)"
 
 
 def show_config(b):
@@ -127,11 +211,12 @@ def show_config(b):
     if d is None:
         print("CONFIG: no response"); return None
     src = {0: "J6", 1: "J7", 2: "off"}
-    print("CONFIG: " + d.hex()
-          + "  (magic=0x%02X flags=0x%02X servo=%dms strike=%dms hold=%dms duty=%d"
-            " door<-%s bolt<-%s)"
-          % (d[0], d[1], d[6] * 10, d[7] * 10, d[8] * 100, d[9],
-             src.get(d[10] & 3, "?"), src.get((d[10] >> 2) & 3, "?")))
+    print("CONFIG: " + d.hex())
+    print("  magic=0x%02X flags=0x%02X strike=%dms hold_duty=%d door<-%s bolt<-%s"
+          % (d[0], d[1], d[2] * 10, d[3],
+             src.get(d[4] & 3, "?"), src.get((d[4] >> 2) & 3, "?")))
+    print("  UNLOCK: " + decode_seq(d[CONFIG_HDR:CONFIG_HDR + SEQ_STEPS * STEP_BYTES]))
+    print("  LOCK:   " + decode_seq(d[CONFIG_HDR + SEQ_STEPS * STEP_BYTES:]))
     return d
 
 
@@ -198,15 +283,13 @@ def provision_keys(args):
 
 
 def blob_from_args(args):
+    unlock_seq = args.unlock or ("s1=%d,dur=%d" % (args.s1_unlock, args.servo_ms))
+    lock_seq = args.lock or ("s1=%d,dur=%d" % (args.s1_lock, args.servo_ms))
     return build_config(
-        servo1=bool(args.servo1), servo2=bool(args.servo2),
-        solenoid=bool(args.solenoid), servo_boost=bool(args.servo_boost),
-        door_earlyoff=bool(args.door_earlyoff),
-        door_src=args.door_src, bolt_src=args.bolt_src,
-        s1_lock_us=args.s1_lock, s1_unlock_us=args.s1_unlock,
-        s2_lock_us=args.s2_lock, s2_unlock_us=args.s2_unlock,
-        servo_ms=args.servo_ms, strike_ms=args.strike_ms,
-        hold_ms=args.hold_ms, hold_duty=args.hold_duty)
+        unlock_seq, lock_seq,
+        servo_boost=bool(args.servo_boost),
+        strike_ms=args.strike_ms, hold_duty=args.hold_duty,
+        door_src=args.door_src, bolt_src=args.bolt_src)
 
 
 def provision_config(args):
@@ -217,33 +300,34 @@ def provision_config(args):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
     ap.add_argument("action",
                     choices=["status", "hall", "unlock", "lock", "nonce",
                              "getconfig", "setconfig",
                              "provision-keys", "provision-config", "provision-all"])
     ap.add_argument("--port", default="/dev/ttyUSB1")
     ap.add_argument("--baud", type=int, default=57600)
-    # setconfig knobs
-    ap.add_argument("--servo1", type=int, default=1)
-    ap.add_argument("--servo2", type=int, default=0)
-    ap.add_argument("--solenoid", type=int, default=0)
-    ap.add_argument("--servo-boost", type=int, default=0,
-                    help="higher-voltage servo via boost — NOT for current hardware")
+    # --- step sequences (full control) ---
+    ap.add_argument("--unlock", default=None,
+                    help='UNLOCK sequence, e.g. "s1=2000,dur=600 sol,dur=5000,eoff=door-"')
+    ap.add_argument("--lock", default=None,
+                    help='LOCK sequence, e.g. "s1=1000,dur=600"')
+    # --- convenience defaults (used to build a single-servo1 seq if --unlock/--lock omitted) ---
     ap.add_argument("--s1-lock", type=int, default=1000)
     ap.add_argument("--s1-unlock", type=int, default=2000)
-    ap.add_argument("--s2-lock", type=int, default=1000)
-    ap.add_argument("--s2-unlock", type=int, default=2000)
     ap.add_argument("--servo-ms", type=int, default=600)
-    ap.add_argument("--strike-ms", type=int, default=50)
-    ap.add_argument("--hold-ms", type=int, default=200)
-    ap.add_argument("--hold-duty", type=int, default=128)
-    ap.add_argument("--door-earlyoff", type=int, default=0,
-                    help="solenoid: cut the hold 500 ms after the door opens")
+    # --- global config knobs ---
+    ap.add_argument("--servo-boost", type=int, default=0,
+                    help="servo-only steps run at 6 V via boost — only if wired for it")
+    ap.add_argument("--strike-ms", type=int, default=50,
+                    help="solenoid strike (full pull-in) time, 12 V economizer mode")
+    ap.add_argument("--hold-duty", type=int, default=128,
+                    help="solenoid economizer hold PWM duty, 0..255")
     ap.add_argument("--door-src", choices=["j6", "j7", "off"], default="j6",
-                    help="which sensor drives DOOR_CLOSED (and door-earlyoff)")
+                    help="which sensor drives DOOR_CLOSED / eoff=door")
     ap.add_argument("--bolt-src", choices=["j6", "j7", "off"], default="j7",
-                    help="which sensor drives BOLT_LOCKED")
+                    help="which sensor drives BOLT_LOCKED / eoff=bolt")
     # provisioning / secrets (also used by the I2C actions so they match USERROW)
     ap.add_argument("--updi-port", default="/dev/ttyUSB0")
     ap.add_argument("--pymcuprog", default="pymcuprog",
