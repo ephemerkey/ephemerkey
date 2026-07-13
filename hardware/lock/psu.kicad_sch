@@ -1422,7 +1422,8 @@
 		(at 12 137.92 0)
 		(effects
 			(font
-				(size 1.5 1.5)
+				(face "Courier New")
+				(size 1.27 1.27)
 			)
 			(justify left top)
 		)

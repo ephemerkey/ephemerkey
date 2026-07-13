@@ -711,7 +711,7 @@
         "uuid": "ec65bc99-660e-415e-984b-47a2d6256a80"
       }
     ],
-    "used_designators": "#PWR2-3",
+    "used_designators": "R17,#PWR2-29",
     "variants": []
   },
   "sheets": [
@@ -734,6 +734,14 @@
     [
       "d20cbfe0-50d2-45dc-9f4f-80cb3761b03d",
       "Sensors"
+    ],
+    [
+      "8b4d948e-9233-4d4c-ae3d-f1865f7ac4e4",
+      "WiFi"
+    ],
+    [
+      "fbc20a33-d179-4972-ae6a-708e23148e6a",
+      "Storage"
     ]
   ],
   "text_variables": {},

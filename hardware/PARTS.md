@@ -23,6 +23,9 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | U5 | LIS3DHTR | LIS3DHTR | C15134 | Package_LGA:LGA-16_3x3mm_P0.5mm |
 | Q1 | AO3401A (P-FET) | AO3401A | C15127 | Package_TO_SOT_SMD:SOT-23 |
 | D3 | B5819W (Schottky) | B5819W | C8598 | Diode_SMD:D_SOD-123 |
+| MD2 | ESP32-C3-MINI-1 (WiFi, optional) | ESP32-C3-MINI-1-N4 | C2838502 | ephemerkey:ESP32-C3-MINI-1 (vendored from espressif/kicad-libraries, w/ 3D model) |
+| U6 | AP2112K-3.3 (WiFi LDO, optional) | AP2112K-3.3TRG1 | C51118 | Package_TO_SOT_SMD:SOT-23-5 |
+| U7 | M24M02E (2Mbit audit-log EEPROM) | M24M02E-FMC6TG | C29549719 | ephemerkey:ST_UFDFPN8-8-1EP_2x3mm_P0.5mm_EP1.4x1.4mm (vendored; verified vs ST UFDFPN8 outline) |
 
 ## Frequency / power magnetics
 
@@ -51,15 +54,15 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 |-------|------|----------|
 | R 5.1k | C25905 | USB-C CC1/CC2 (R4,R5) |
 | R 4.7k | C25900 | Rprog (R6, 213 mA), I²C pull-ups (R9,R10) |
-| R 100k | C25741 | load-share gate pulldown (R7) |
-| R 10k | C25744 | BOOT0 pulldown (R1) |
-| R 1k | C11702 | LED series (R2,R3,R8) |
-| R 0Ω | C17168 | antenna π-match series (Rm1) |
-| C 100nF | C1525 | decoupling (C3,C4,C5,C8,C9,C17,C20,C21,C22,C23,C24) |
-| C 1µF | C29266 | VDDA/VREF+ filter (C7) |
+| R 100k | C25741 | load-share gate pulldown (R7), WiFi LDO EN pulldown (R26) |
+| R 10k | C25744 | BOOT0 pulldown (R1), WiFi EN RC + straps (R18–R21) |
+| R 1k | C11702 | LED series (R2,R3,R8), WiFi UART series (R22,R23) |
+| R 0Ω | C17168 | antenna π-match series (Rm1), WiFi→MCU recovery links (R24,R25 — DNP) |
+| C 100nF | C1525 | decoupling (C3,C4,C5,C8,C9,C17,C20,C21,C22,C23,C24,C28,C30) |
+| C 1µF | C29266 | VDDA/VREF+ filter (C7), WiFi EN RC (C25) |
 | C 12pF | C1547 | LSE load caps (C1,C2) — tune to crystal CL |
 | C 10pF | (TBD) | VCC_RF HF bypass (C18) |
-| C 10µF 0805 | C15850 | bulk: 3V3, charger, buck-boost, VBUS/VBAT, GNSS VCC (C6,C10–C16,C19) |
+| C 10µF 0805 | C15850 | bulk: 3V3, charger, buck-boost, VBUS/VBAT, GNSS VCC (C6,C10–C16,C19), WiFi LDO/module (C26,C27,C29) |
 | C DNP | — | antenna π-match shunts (Cm2,Cm3 — fit at bring-up) |
 
 ## Notes
@@ -69,3 +72,10 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
   trim residual with the STM32 RTC SMOOTHCALIB.
 - **3 parts need a downloaded 3D model** (STM32U083KCU6, MAX-M10S, W3011A) — see
   `lib/3dmodels/README.md`.
+- **WiFi is optional:** MD2 + U6 + R18–R26 + C25–C29 live on `wifi.kicad_sch`
+  and can be depopulated as a group. Own LDO rail from VSYS (350mA TX bursts
+  never load the TPS63900); off by default (PB5 low, <1µA leak).
+- **U7 audit log** (`storage.kicad_sch`): I2C1 @ 0x50–0x53, encrypted +
+  HMAC-chained 32B records, ~8000-record ring (2Mbit). Secrets stay in internal
+  flash; STM32 OTA images stage in the ESP32's 4MB flash — see DESIGN.md
+  "Storage, Logging & OTA".
