@@ -1,22 +1,17 @@
-//! Code-slot policy engine (LockController personality) — typed sketch.
+//! Code-slot policy model + per-slot state machines.
 //!
-//! Design doc: `DESIGN-policies.md` (repo root). Summary: a lock holds
-//! parallel, independent CODE SLOTS; each slot has its own secret (or
-//! zone-key), its own policy state machine, and its own action. Codes are
-//! tried against every slot; timing violations and invalid codes reset
-//! per-slot state; each TOTP period counts at most once per slot.
-//!
-//! Scaffold: types + state-machine skeleton, no TOTP validation yet (that
-//! lands with the RustCrypto hmac/sha1 port of smalltotp).
+//! Moved from the firmware scaffold; shared verbatim by the STM32 build and
+//! the host emulator so behavior can never diverge. See DESIGN-policies.md.
 
-#![allow(dead_code)]
-
-use defmt::Format;
+use crate::totp::PERIOD_S;
 
 pub const MAX_SLOTS: usize = 8;
+pub const MAX_KEYS: usize = 8;
 
 /// Gates that must hold for codes to count toward a slot (composable).
-#[derive(Copy, Clone, Format)]
+/// Evaluation lives with the caller (it owns GNSS/accel/RTC state).
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Gates {
     /// Lock's own GNSS must place it inside this fence (portable locks).
     pub own_fence: Option<u8>, // fence table index
@@ -28,10 +23,8 @@ pub struct Gates {
 // (Split-epoch freshness is not a gate: it is `delay_min_s..delay_max_s =
 // 0..X` on the Sequence policy — a slot has exactly one arrival window.)
 
-/// TOTP period (RFC 6238 default).
-pub const PERIOD_S: u32 = 30;
-
-#[derive(Copy, Clone, Format)]
+#[derive(Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Policy {
     /// One valid code fires immediately (master slot).
     AlwaysValid,
@@ -59,7 +52,23 @@ pub enum Policy {
     DeadMan { beat_s: u16 },
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Format)]
+impl Policy {
+    /// The slot's arrival window relative to a code's minting time.
+    pub fn delay_window(&self) -> (u32, u32) {
+        match *self {
+            Policy::Sequence {
+                delay_min_s,
+                delay_max_s,
+                ..
+            } => (u32::from(delay_min_s), u32::from(delay_max_s)),
+            // Instant-entry default: current or previous period.
+            _ => (0, 2 * PERIOD_S),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Action {
     Unlock,
     Lock,
@@ -67,9 +76,22 @@ pub enum Action {
     DuressUnlock,
 }
 
-#[derive(Copy, Clone, Format)]
+/// Response to a decoy (negative) match — see `Verdict::Negative`.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum NegativeAction {
+    /// Reset this slot's sequence state (and log).
+    Reset,
+    /// Hard lockout for N seconds (and log).
+    Lockout(u16),
+    /// No externally visible effect — duress telemetry only.
+    Silent,
+}
+
+#[derive(Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Slot {
-    /// Secret / zone-key-set reference in the provisioned key table.
+    /// Key table index of the secret this slot validates against.
     pub key: u8,
     pub policy: Policy,
     pub gates: Gates,
@@ -79,19 +101,24 @@ pub struct Slot {
     pub show_progress: bool,
     /// A code matching NO slot resets this slot's sequence state.
     pub reset_on_invalid: bool,
+    /// What a decoy match does to this slot.
+    pub negative: NegativeAction,
 }
 
 /// Runtime state — RAM only, deliberately lost on power-cycle.
-#[derive(Copy, Clone, Format, Default)]
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SlotState {
     pub count: u8,
-    /// TOTP period counter of the last accepted code (replay dedupe).
-    pub last_period: u32,
-    /// Uptime seconds of first / most recent accepted code.
+    /// TOTP counter of the last accepted code (generation-cadence anchor).
+    pub last_counter: u32,
+    /// Arrival times (unix seconds truncated to u32) of window start / last code.
     pub window_start_s: u32,
     pub last_code_s: u32,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Verdict {
     /// Code accepted, sequence advanced (progress = count/needed).
     Progress(u8, u8),
@@ -99,7 +126,7 @@ pub enum Verdict {
     Fire(Action),
     /// Timing/gate violation — this slot reset.
     Reset,
-    /// Not for this slot / replayed period — no state change.
+    /// Not for this slot / replayed counter — no state change.
     Ignored,
     /// Matched a DECOY key (`K_decoy`, generator poison mode): a definite
     /// squeezed-generator signal, not noise. Caller applies the configured
@@ -112,13 +139,13 @@ impl SlotState {
         *self = Self::default();
     }
 
-    /// Feed a validated code event at uptime `now_s`. `counter` is the TOTP
+    /// Feed a validated code event at time `now_s`. `counter` is the TOTP
     /// counter the code matched — i.e. its generation time in periods; the
     /// caller has already verified the code AND that it fell inside the
     /// slot's delay window (it searched exactly that counter range). Pure
     /// state machine — crypto and gate evaluation happen in the caller.
     pub fn on_code(&mut self, slot: &Slot, counter: u32, now_s: u32) -> Verdict {
-        if counter <= self.last_period && self.count > 0 {
+        if self.count > 0 && counter <= self.last_counter {
             return Verdict::Ignored; // counter burned (replay) or out of order
         }
         match slot.policy {
@@ -133,9 +160,12 @@ impl SlotState {
                 if self.count > 0 {
                     // Generation cadence: spacing between minting times,
                     // recovered from the matched counters.
-                    let gen_gap = (counter - self.last_period) * PERIOD_S;
-                    let in_window = now_s - self.window_start_s <= window_s as u32;
-                    if gen_gap < gap_min_s as u32 || gen_gap > gap_max_s as u32 || !in_window {
+                    let gen_gap = (counter - self.last_counter) * PERIOD_S;
+                    let in_window = now_s - self.window_start_s <= u32::from(window_s);
+                    if gen_gap < u32::from(gap_min_s)
+                        || gen_gap > u32::from(gap_max_s)
+                        || !in_window
+                    {
                         self.reset();
                         return Verdict::Reset;
                     }
@@ -143,7 +173,7 @@ impl SlotState {
                     self.window_start_s = now_s;
                 }
                 self.count += 1;
-                self.last_period = counter;
+                self.last_counter = counter;
                 self.last_code_s = now_s;
                 if self.count >= n {
                     self.reset();
@@ -171,8 +201,8 @@ impl SlotState {
             ..
         } = slot.policy
         {
-            let slack = (delay_max_s - delay_min_s) as u32;
-            if self.count > 0 && now_s - self.last_code_s > gap_max_s as u32 + slack {
+            let slack = u32::from(delay_max_s - delay_min_s);
+            if self.count > 0 && now_s - self.last_code_s > u32::from(gap_max_s) + slack {
                 self.reset();
             }
         }

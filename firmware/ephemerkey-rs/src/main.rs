@@ -24,11 +24,14 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_time::Timer;
 
+// Policy engine + TOTP + reveal scheduler live in the shared no_std core,
+// exercised on-host by the emulator (../ephemerkey-emu) and tests.
+use ephemerkey_core as _;
+
 mod buzzer;
 mod config;
 mod gnss;
 mod lock;
-mod policy;
 mod provision;
 mod sensors;
 mod wifi;

@@ -36,6 +36,10 @@ panic-probe = { version = "1.0", features = ["print-defmt"] }
 
 heapless = "0.8"
 
+# Shared logic (policy engine, TOTP, reveal scheduler) — same code the host
+# emulator and tests run. no_std, no alloc.
+ephemerkey-core = { path = "../ephemerkey-core" }
+
 [profile.release]
 debug = 2          # keep symbols for defmt/probe-rs; not flashed
 lto = "fat"

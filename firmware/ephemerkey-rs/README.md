@@ -30,7 +30,7 @@ provisioning mode) or the WiFi/ESP32-C3 link — see `src/provision.rs` and
 | `src/buzzer.rs` | TIM3_CH1 PWM on PB4 (boot chirp) |
 | `src/config.rs` | role + persistent config (flash journal TODO) |
 | `src/provision.rs` | signed config file ingestion (USB/WiFi transports TODO) |
-| `src/policy.rs` | code-slot / pedantic-unlock state machines (sketch) |
+| `../ephemerkey-core` | **shared no_std core**: TOTP (4-10 digits, delay windows), code-slot policy engine, reveal scheduler (scatter/show-once/decoy) — unit-tested on host, exercised by `../ephemerkey-emu` |
 
 Every pin binding is type-checked against the U083 AF table at compile time —
 the crate builds only if the DESIGN.md pin budget is electrically coherent.
@@ -72,7 +72,7 @@ Requires `rustup` (pulls the pinned toolchain + target via
 ## Roadmap
 
 - [ ] Clock tree: LSE→RTC, HSI48+CRS→USB; then Stop-mode + `low-power` executor
-- [ ] TOTP core: RustCrypto `hmac`/`sha1` port of smalltotp (share test vectors)
+- [x] TOTP core: RustCrypto `hmac`/`sha1` in `ephemerkey-core` (RFC-vector tested)
 - [ ] NMEA parse + geofence (port `geofence.c` point-in-polygon)
 - [ ] TIM2_CH1 PPS capture → RTC discipline + staleness window
 - [ ] Flash config journal (last 2×2KB pages, CRC ping-pong) + RDP/HDP

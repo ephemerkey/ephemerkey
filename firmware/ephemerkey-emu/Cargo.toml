@@ -1,0 +1,15 @@
+[package]
+name = "ephemerkey-emu"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Host emulator for the ephemerkey generator + lock: virtual clock, display mimicry, scriptable CLI"
+
+[[bin]]
+name = "ekemu"
+path = "src/main.rs"
+
+[dependencies]
+ephemerkey-core = { path = "../ephemerkey-core", features = ["introspect"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
