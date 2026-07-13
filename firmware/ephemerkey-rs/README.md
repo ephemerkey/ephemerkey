@@ -77,7 +77,7 @@ Requires `rustup` (pulls the pinned toolchain + target via
 - [ ] TIM2_CH1 PPS capture → RTC discipline + staleness window
 - [ ] Flash config journal (last 2×2KB pages, CRC ping-pong) + RDP/HDP
 - [ ] USB FS provisioning console (`embassy-usb`, button-gated)
-- [ ] Lock link: nonce/HMAC command flow over the bit-bang master (+ soak
+- [ ] Lock link: nonce/HMAC command flow over I2C3 (+ soak
       against the real lock through actuation transients)
 - [ ] Policy engine: gate evaluation (GNSS/accel/RTC), confirm-TOTP (HOTP receipt)
 - [x] Path / DeadMan / Quorum state machines (ephemerkey-core, emulator-proven)
