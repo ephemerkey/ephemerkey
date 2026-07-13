@@ -63,7 +63,8 @@ config = {
   2: set_id,       ; bstr[8]
   3: target,       ; device_id or 0 = whole set
   4: role,         ; 1 = generator, 2 = lock-controller
-  5: keys,         ; [ {id, kind(totp/zone/pairing/confirm), secret} ]
+  5: keys,         ; [ {id, kind(totp/zone/pairing/confirm/decoy), secret,
+                   ;    digits(4-10), display(plain/scatter/short/once), decoy_ref} ]
   6: zones,        ; [ {id, shape(circle/poly), coords, hdop, minsats} ]
   7: slots,        ; [ {key, policy, gates, action, progress, reset_on_invalid} ]
   8: policy-blobs, ; per-slot params, tagged by policy type
@@ -105,6 +106,8 @@ a **slot table** per device, and a policy editor per slot. Per-policy forms:
 |--------|-------------|
 | Master (AlwaysValid) | key slot picker; big red "no ceremony" warning |
 | Time-gated sequence (N/Y/min-max) | steppers for N; duration fields for window + min/max gap; live validity check (`n·gap_min ≤ window`); progress visible/hidden toggle |
+| Walk-time delay | dual duration slider "codes valid from +X to +Y after minting" (0 = instant); warning that a wide window multiplies guess surface → suggests longer digits |
+| Code length / display | digits stepper 4–10 (entropy note at 10: 31-bit truncation cap); display mode dropdown per key: plain / scatter-reveal (dwell ms, step-by-button) / short-reveal (secs) / show-once → refuse-or-decoy; decoy severity picker (reset / lockout / silent duress) |
 | Rhythm lock | cadence + tolerance; renders a metronome preview |
 | Zone-keyed distance ("generator must be far") | map widget: draw the far zone(s) on the *generator's* config, UI auto-creates the zone key and references it from the lock's slot — the cross-device wiring is done by the UI, invisibly |
 | Walk-the-path | ordered waypoint list on the map, per-leg deadline fields; drag to reorder |

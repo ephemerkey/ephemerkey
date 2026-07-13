@@ -74,9 +74,11 @@ Lock fixed at the vault; generator must be taken far away. Unlock requires
 policy Sequence {
     key        = K_far          # zone-keyed: generator must be in the "far" zone
     n          = 3              # codes required
-    window     = 10 min         # all N must land inside this
+    window     = 10 min         # all N must land inside this (arrival)
     gap_min    = 90 s           # too fast -> reset (no code hoarding)
     gap_max    = 4 min          # too slow -> reset (continuous presence)
+    delay      = 30..35 min     # walk time: codes valid this long AFTER minting
+                                # (0..~30s = instant; see "Time-shifted validity")
     reset_on_invalid = true
     progress   = visible | hidden
 }
@@ -91,6 +93,72 @@ of codes and replaying them in one burst; `gap_max` proves the generator
 **Progress display** is a per-slot flag: show a count on the OLED/LEDs, or
 show nothing (an observer can't tell a 2-of-3 state from idle — decoy option:
 always display the same idle screen).
+
+## Time-shifted validity (walk time)
+
+The person opening the lock and the holder of the generator are usually the
+**same person** — the far zone and the lock may be a 30-minute walk apart. So
+a slot can accept codes with a configured **delay window**: a code generated
+at T=0 is valid at the lock from `T+delay_min` to `T+delay_max` (e.g.
++30…+35 min) — and, importantly, *not* valid immediately.
+
+Mechanics (all from standard TOTP, no new crypto):
+
+- The lock knows which TOTP counter a code matched, i.e. its **generation
+  time** to one period. Delay check: `now - gen_time ∈ [delay_min, delay_max]`.
+  The verifier simply searches the counter range
+  `[(now-delay_max)/P … (now-delay_min)/P]` instead of "current ± 1".
+- With a delay window, sequence **gap timing splits in two**, and both are
+  checked:
+  - **generation cadence** — spacing between the *counters* of accepted
+    codes (`Δcounter × P ∈ [gap_min, gap_max]`): proves the codes were
+    minted at the far place at the required rhythm. Immune to arrival
+    jitter, and immune to hoarding-then-bursting by construction.
+  - **arrival window** — all M codes must still be entered within the
+    slot's overall window (and optionally with their own arrival gaps).
+- A delayed slot proves "*you were in the far zone at T-30min, M times, at
+  the right cadence*" — the person writes the codes down (or remembers them)
+  and walks. This is the intended, primary usage of the sequence policy.
+- Composition rule: **split-epoch freshness** (catalog #11) is the delay
+  window's opposite (`delay = [0, X]`); a slot has exactly one arrival
+  window, `[delay_min, delay_max]`, with instant slots being `[0, ~P]`.
+- Replay unchanged: each accepted counter burns once per slot; the wider
+  counter search only widens brute-force surface, which is countered by code
+  length (below) and lockout (#12).
+
+## Code length & display modes (generator side)
+
+**Code length is per-key configurable, 4–10 digits.** RFC 6238 dynamic
+truncation yields 31 bits, so entropy saturates just above 9 digits — 10 is
+allowed but adds nothing (and its leading digit skews low); the UI says so.
+Short codes (4–5 digits) are for low-stakes slots and pair naturally with
+strict lockout; delayed/high-stakes slots should use 8+ (a wider delay window
+multiplies the guessing surface).
+
+The generator's *display* is itself policy-configurable per key:
+
+- **Scatter reveal (secret mode)** — the code is shown **one digit at a
+  time, in its correct position, in random order** (`__3___`, `4_____`, …).
+  A shoulder-surfer must capture every frame *and* its position; the owner
+  just fills in a mental grid. Config: per-digit dwell time, auto-advance or
+  button-step.
+- **Short reveal** — correct codes display for a bounded time (e.g. 5 s),
+  then blank. Config: reveal seconds.
+- **Show-once + refuse** — after one reveal, the generator refuses to show
+  another code until the *next legitimate cadence window* (it knows the
+  slot's `gap_min`/`gap_max` and counts down to it). Someone who grabs the
+  device after you've read your code gets nothing.
+- **Show-once + decoy (poison mode)** — stronger: instead of refusing,
+  subsequent reveals show a plausible code drawn from a distinct decoy
+  secret (`K_decoy`). Entering a decoy at the lock is a **negative match**:
+  it's not "invalid noise", it's a definite signal someone squeezed the
+  generator for extra codes. Per-slot response: reset, hard lockout, or
+  silent duress telemetry. Under coercion, "show me another code" hands the
+  attacker a tripwire.
+
+Generator-side display/reveal state is RAM-only and per-key, mirroring the
+lock's slot config so the countdown UX ("next code in 90 s") matches what
+the lock will actually accept.
 
 ## More pedantic sequences (catalog)
 
@@ -161,6 +229,7 @@ turns it into a required input for the next cycle.
 | Valid code, right slot, timing OK | advance that slot's state |
 | Valid code, timing violated (early/late/window) | reset that slot |
 | Code matching no slot | reset all `reset_on_invalid` slots |
+| **Decoy code (negative match, `K_decoy`)** | per-slot: reset, hard lockout, or silent duress telemetry — always logged |
 | Replayed code (same TOTP counter) | ignored (no advance, no reset) |
 | Gate unsatisfied (position/stillness/calendar) | code ignored or slot reset (per-slot option) |
 | Power loss | sequence state is RAM-only → full reset (deliberate) |
