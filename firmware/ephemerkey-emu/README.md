@@ -35,10 +35,17 @@ display pipeline is identical for real and poison codes by construction).
 ## Scenario files
 
 JSON (`scenarios/*.json`): a key table (secret, digits 4-10, optional decoy
-twin, display spec) and a slot table (policy + parameters). See
-`scenarios/walk-vault.json` — the canonical ritual: 3 codes, 90-240 s
-generation cadence, valid 30-35 min after minting, poison mode on the
-generator, negative = 300 s lockout.
+twin, display spec) and a slot table (policy + parameters). Policies:
+`always`, `sequence` (N codes, generation cadence, walk delay), `path`
+(ordered zone-keyed legs), `deadman` (beat or RELOCK), `quorum` (M-of-N
+distinct keys, optional alternating).
+
+| Scenario | Script demonstrates |
+|----------|---------------------|
+| `walk-vault` | the canonical ritual: 3 codes on 90-240 s minting cadence, valid 30-35 min later; scatter display; poison-mode decoy → lockout |
+| `courier` | walk-the-path: zone A→B→C legs, order + pace proven by counters, entered from the notebook at the destination |
+| `deadman` | unlock, keep-alive beats, missed-beat RELOCK, and the forced-reset-still-relocks invariant |
+| `quorum` | two-person rule: alternating violation, completion, window expiry |
 
 ## What the demo script proves
 

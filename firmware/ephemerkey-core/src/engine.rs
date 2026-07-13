@@ -7,7 +7,9 @@
 //! machines. Gate evaluation (GNSS/accel/RTC) is the caller's job — a gated
 //! slot is simply passed as `enabled = false` for now.
 
-use crate::policy::{Action, NegativeAction, Slot, SlotState, Verdict, MAX_KEYS, MAX_SLOTS};
+use crate::policy::{
+    Action, NegativeAction, Policy, Slot, SlotState, Verdict, MAX_KEYS, MAX_QUORUM, MAX_SLOTS,
+};
 use crate::totp::{hotp, Code, PERIOD_S};
 
 pub const MAX_SECRET: usize = 32;
@@ -49,6 +51,8 @@ pub enum Outcome {
     Reset(u8),
     /// Replay of an already-burned counter — silently ignored.
     Replay(u8),
+    /// DeadMan sustain refreshed.
+    Beat(u8),
     /// DECOY match on a slot: the squeezed-generator tripwire.
     Negative(u8, NegativeAction),
     /// Slot is in negative-lockout; code ignored.
@@ -66,6 +70,8 @@ pub struct LockEngine {
     burned: [u32; MAX_SLOTS],
     /// Unix time (u32) until which the slot ignores codes (negative lockout).
     lockout_until: [u32; MAX_SLOTS],
+    /// Bit i set: slot i's DeadMan sustain expired — caller must re-lock.
+    pending_relock: u8,
 }
 
 impl Default for LockEngine {
@@ -82,6 +88,32 @@ impl LockEngine {
             state: [SlotState::default(); MAX_SLOTS],
             burned: [0; MAX_SLOTS],
             lockout_until: [0; MAX_SLOTS],
+            pending_relock: 0,
+        }
+    }
+
+    /// Candidate (key-table index, kidx) pairs an entered code may match
+    /// for this slot right now: the single key, the current Path leg's
+    /// key, or every Quorum member.
+    fn candidates(slot: &Slot, st: &SlotState) -> ([(u8, u8); MAX_QUORUM], usize) {
+        let mut out = [(0u8, 0u8); MAX_QUORUM];
+        match slot.policy {
+            Policy::Path { legs, leg_keys, .. } => {
+                let leg = st.count.min(legs.saturating_sub(1));
+                out[0] = (leg_keys[leg as usize], leg);
+                (out, 1)
+            }
+            Policy::Quorum { n_keys, keys, .. } => {
+                let n = (n_keys as usize).min(MAX_QUORUM);
+                for (i, o) in out[..n].iter_mut().enumerate() {
+                    *o = (keys[i], i as u8);
+                }
+                (out, n)
+            }
+            _ => {
+                out[0] = (slot.key, 0);
+                (out, 1)
+            }
         }
     }
 
@@ -106,14 +138,40 @@ impl LockEngine {
         }
     }
 
-    /// Advance time-driven state (sequence expiry). Call before/with entry.
+    /// Advance time-driven state (sequence/quorum expiry, DeadMan beats).
+    /// Call on every time advance and before entry. Expired DeadMan slots
+    /// accumulate in the relock queue — drain with [`take_relocks`].
+    ///
+    /// [`take_relocks`]: LockEngine::take_relocks
     pub fn tick(&mut self, now: u64) {
         let now_s = now as u32;
         for i in 0..MAX_SLOTS {
             if let Some(slot) = self.slots[i] {
-                self.state[i].tick(&slot, now_s);
+                if self.state[i].tick(&slot, now_s) {
+                    self.pending_relock |= 1 << i;
+                }
             }
         }
+    }
+
+    /// Slots whose DeadMan sustain ended since the last call (bit i = slot
+    /// i) — beat missed, invalid-code reset, or decoy reset. The caller
+    /// must actuate the re-lock — the opposite of the slot's fire action —
+    /// and log it. The engine's state and the physical lock must never
+    /// disagree about "sustained".
+    pub fn take_relocks(&mut self) -> u8 {
+        core::mem::take(&mut self.pending_relock)
+    }
+
+    /// Forced reset (invalid code / decoy): a sustained DeadMan slot that
+    /// gets reset here still owes the world a re-lock event.
+    fn reset_slot(&mut self, i: usize) {
+        if let Some(slot) = self.slots[i] {
+            if matches!(slot.policy, Policy::DeadMan { .. }) && self.state[i].sustained {
+                self.pending_relock |= 1 << i;
+            }
+        }
+        self.state[i].reset();
     }
 
     /// Feed one entered code at unix time `now`.
@@ -123,48 +181,53 @@ impl LockEngine {
 
         for i in 0..MAX_SLOTS {
             let Some(slot) = self.slots[i] else { continue };
-            let Some(key) = self.keys[slot.key as usize] else {
-                continue;
-            };
-            let Some(code) = Code::parse(entered, key.digits) else {
-                continue;
-            };
             let delay = slot.policy.delay_window();
+            let (cands, n_cands) = Self::candidates(&slot, &self.state[i]);
 
-            if now_s < self.lockout_until[i] {
-                // Even a correct code is ignored during lockout — but check
-                // the match first so lockout is observable in the outcome.
-                if Self::match_key(&key, code, now, delay).is_some() {
-                    return Outcome::LockedOut(i as u8);
-                }
-            } else if let Some(counter) = Self::match_key(&key, code, now, delay) {
-                if counter <= self.burned[i] {
-                    return Outcome::Replay(i as u8);
-                }
-                self.burned[i] = counter;
-                return match self.state[i].on_code(&slot, counter, now_s) {
-                    Verdict::Progress(h, n) => Outcome::Progress(i as u8, h, n),
-                    Verdict::Fire(a) => Outcome::Fired(i as u8, a),
-                    Verdict::Reset => Outcome::Reset(i as u8),
-                    Verdict::Ignored => Outcome::Replay(i as u8),
-                    Verdict::Negative => unreachable!("decoys matched below"),
+            for &(ktab, kidx) in &cands[..n_cands] {
+                let Some(key) = self.keys[ktab as usize] else {
+                    continue;
                 };
-            }
+                let Some(code) = Code::parse(entered, key.digits) else {
+                    continue;
+                };
 
-            // Decoy twin: same delay window — poison codes are minted where
-            // real ones would have been.
-            if let Some(dk) = key.decoy.and_then(|d| self.keys[d as usize]) {
-                if let Some(code) = Code::parse(entered, dk.digits) {
-                    if Self::match_key(&dk, code, now, delay).is_some() {
-                        match slot.negative {
-                            NegativeAction::Reset => self.state[i].reset(),
-                            NegativeAction::Lockout(s) => {
-                                self.state[i].reset();
-                                self.lockout_until[i] = now_s + u32::from(s);
+                if now_s < self.lockout_until[i] {
+                    // Even a correct code is ignored during lockout — but
+                    // check the match so lockout is observable.
+                    if Self::match_key(&key, code, now, delay).is_some() {
+                        return Outcome::LockedOut(i as u8);
+                    }
+                } else if let Some(counter) = Self::match_key(&key, code, now, delay) {
+                    if counter <= self.burned[i] {
+                        return Outcome::Replay(i as u8);
+                    }
+                    self.burned[i] = counter;
+                    return match self.state[i].on_code(&slot, kidx, counter, now_s) {
+                        Verdict::Progress(h, n) => Outcome::Progress(i as u8, h, n),
+                        Verdict::Fire(a) => Outcome::Fired(i as u8, a),
+                        Verdict::Beat => Outcome::Beat(i as u8),
+                        Verdict::Reset => Outcome::Reset(i as u8),
+                        Verdict::Ignored => Outcome::Replay(i as u8),
+                        Verdict::Negative => unreachable!("decoys matched below"),
+                    };
+                }
+
+                // Decoy twin: same delay window — poison codes are minted
+                // where real ones would have been.
+                if let Some(dk) = key.decoy.and_then(|d| self.keys[d as usize]) {
+                    if let Some(code) = Code::parse(entered, dk.digits) {
+                        if Self::match_key(&dk, code, now, delay).is_some() {
+                            match slot.negative {
+                                NegativeAction::Reset => self.reset_slot(i),
+                                NegativeAction::Lockout(s) => {
+                                    self.reset_slot(i);
+                                    self.lockout_until[i] = now_s + u32::from(s);
+                                }
+                                NegativeAction::Silent => {}
                             }
-                            NegativeAction::Silent => {}
+                            return Outcome::Negative(i as u8, slot.negative);
                         }
-                        return Outcome::Negative(i as u8, slot.negative);
                     }
                 }
             }
@@ -174,7 +237,7 @@ impl LockEngine {
         for i in 0..MAX_SLOTS {
             if let Some(slot) = self.slots[i] {
                 if slot.reset_on_invalid {
-                    self.state[i].reset();
+                    self.reset_slot(i);
                 }
             }
         }
@@ -310,6 +373,186 @@ mod tests {
         assert_eq!(
             e.enter_code(&code_at(SECRET, t2), t2),
             Outcome::Progress(0, 1, 3)
+        );
+    }
+
+    fn slot_with(policy: Policy) -> Slot {
+        Slot {
+            key: 0,
+            policy,
+            gates: Gates::default(),
+            action: Action::Unlock,
+            show_progress: true,
+            reset_on_invalid: true,
+            negative: NegativeAction::Reset,
+        }
+    }
+
+    const ZONE_A: &[u8] = b"zone-a-secret-0000000";
+    const ZONE_B: &[u8] = b"zone-b-secret-0000000";
+    const ZONE_C: &[u8] = b"zone-c-secret-0000000";
+
+    fn path_engine() -> LockEngine {
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(ZONE_A, 6));
+        e.keys[1] = Some(KeyDef::new(ZONE_B, 6));
+        e.keys[2] = Some(KeyDef::new(ZONE_C, 6));
+        e.slots[0] = Some(slot_with(Policy::Path {
+            legs: 3,
+            leg_keys: [0, 1, 2, 0],
+            leg_deadline_s: 600,
+            delay_max_s: 3600,
+        }));
+        e
+    }
+
+    #[test]
+    fn path_walks_in_order() {
+        let mut e = path_engine();
+        let t0 = 1_750_000_000u64;
+        // Mint along the route: A at t0, B at +8 min, C at +16 min.
+        let (ca, cb, cc) = (
+            code_at(ZONE_A, t0),
+            code_at(ZONE_B, t0 + 480),
+            code_at(ZONE_C, t0 + 960),
+        );
+        // Arrive 30 min after departure; enter in order from the notebook.
+        let arr = t0 + 1800;
+        assert_eq!(e.enter_code(&ca, arr), Outcome::Progress(0, 1, 3));
+        assert_eq!(e.enter_code(&cb, arr + 10), Outcome::Progress(0, 2, 3));
+        assert_eq!(
+            e.enter_code(&cc, arr + 20),
+            Outcome::Fired(0, Action::Unlock)
+        );
+    }
+
+    #[test]
+    fn path_wrong_order_is_invalid() {
+        let mut e = path_engine();
+        let t0 = 1_750_000_000u64;
+        let cb = code_at(ZONE_B, t0 + 480);
+        // Leg 1 expects zone A — a zone B code matches nothing.
+        assert_eq!(e.enter_code(&cb, t0 + 1800), Outcome::Invalid);
+    }
+
+    #[test]
+    fn path_dawdling_between_legs_resets() {
+        let mut e = path_engine();
+        let t0 = 1_750_000_000u64;
+        let ca = code_at(ZONE_A, t0);
+        let cb = code_at(ZONE_B, t0 + 900); // 15 min > 10 min leg deadline
+        let arr = t0 + 1800;
+        assert_eq!(e.enter_code(&ca, arr), Outcome::Progress(0, 1, 3));
+        assert_eq!(e.enter_code(&cb, arr + 10), Outcome::Reset(0));
+    }
+
+    #[test]
+    fn deadman_fires_beats_and_relocks() {
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(SECRET, 6));
+        e.slots[0] = Some(slot_with(Policy::DeadMan { beat_s: 120 }));
+        let t0 = 1_750_000_000u64;
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0), t0),
+            Outcome::Fired(0, Action::Unlock)
+        );
+        // Fresh beat inside the window.
+        let t1 = t0 + 90;
+        assert_eq!(e.enter_code(&code_at(SECRET, t1), t1), Outcome::Beat(0));
+        assert_eq!(e.take_relocks(), 0);
+        // Miss a beat: relock event surfaces on tick.
+        e.tick(t1 + 121);
+        assert_eq!(e.take_relocks(), 0b1);
+        assert_eq!(e.take_relocks(), 0); // drained
+                                         // Re-arms: a fresh code fires again.
+        let t2 = t1 + 180;
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t2), t2),
+            Outcome::Fired(0, Action::Unlock)
+        );
+    }
+
+    #[test]
+    fn deadman_forced_reset_still_owes_a_relock() {
+        // A stale/invalid code while sustained resets via reset_on_invalid —
+        // the physical lock MUST still get a re-lock event, or engine state
+        // and the actuator diverge.
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(SECRET, 6));
+        e.slots[0] = Some(slot_with(Policy::DeadMan { beat_s: 120 }));
+        let t0 = 1_750_000_000u64;
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0), t0),
+            Outcome::Fired(0, Action::Unlock)
+        );
+        // A 90s-old code is outside the instant delay window -> Invalid.
+        let t1 = t0 + 90;
+        assert_eq!(e.enter_code(&code_at(SECRET, t0), t1), Outcome::Invalid);
+        assert_eq!(e.take_relocks(), 0b1);
+    }
+
+    #[test]
+    fn quorum_two_person_alternating() {
+        const ALICE: &[u8] = b"alice-secret-00000000";
+        const BOB: &[u8] = b"bob-secret-0000000000";
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(ALICE, 6));
+        e.keys[1] = Some(KeyDef::new(BOB, 6));
+        let quorum = Policy::Quorum {
+            m: 2,
+            n_keys: 2,
+            keys: [0, 1, 0, 0],
+            window_s: 300,
+            alternating: true,
+        };
+        e.slots[0] = Some(slot_with(quorum));
+        let t0 = 1_750_000_000u64;
+
+        // Alice then Alice again: alternating violation resets.
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t0), t0),
+            Outcome::Progress(0, 1, 2)
+        );
+        let t1 = t0 + 40;
+        assert_eq!(e.enter_code(&code_at(ALICE, t1), t1), Outcome::Reset(0));
+
+        // Alice then Bob completes.
+        let t2 = t0 + 90;
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t2), t2),
+            Outcome::Progress(0, 1, 2)
+        );
+        let t3 = t0 + 130;
+        assert_eq!(
+            e.enter_code(&code_at(BOB, t3), t3),
+            Outcome::Fired(0, Action::Unlock)
+        );
+    }
+
+    #[test]
+    fn quorum_window_expires() {
+        const ALICE: &[u8] = b"alice-secret-00000000";
+        const BOB: &[u8] = b"bob-secret-0000000000";
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(ALICE, 6));
+        e.keys[1] = Some(KeyDef::new(BOB, 6));
+        e.slots[0] = Some(slot_with(Policy::Quorum {
+            m: 2,
+            n_keys: 2,
+            keys: [0, 1, 0, 0],
+            window_s: 300,
+            alternating: false,
+        }));
+        let t0 = 1_750_000_000u64;
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t0), t0),
+            Outcome::Progress(0, 1, 2)
+        );
+        // Bob shows up 6 minutes later: round expired, he starts a new one.
+        let t1 = t0 + 360;
+        assert_eq!(
+            e.enter_code(&code_at(BOB, t1), t1),
+            Outcome::Progress(0, 1, 2)
         );
     }
 

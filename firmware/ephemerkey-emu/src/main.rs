@@ -20,7 +20,9 @@
 //!   quit
 
 use ephemerkey_core::engine::{KeyDef, LockEngine, Outcome};
-use ephemerkey_core::policy::{Action, Gates, NegativeAction, Policy, Slot};
+use ephemerkey_core::policy::{
+    Action, Gates, NegativeAction, Policy, Slot, MAX_PATH_LEGS, MAX_QUORUM,
+};
 use ephemerkey_core::reveal::{DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
 use serde::Deserialize;
 use std::io::BufRead;
@@ -131,6 +133,21 @@ enum PolicyCfg {
         #[serde(default = "default_delay_max")]
         delay_max_s: u16,
     },
+    Path {
+        leg_keys: Vec<u8>,
+        leg_deadline_s: u16,
+        delay_max_s: u16,
+    },
+    DeadMan {
+        beat_s: u16,
+    },
+    Quorum {
+        m: u8,
+        keys: Vec<u8>,
+        window_s: u16,
+        #[serde(default)]
+        alternating: bool,
+    },
 }
 fn default_delay_max() -> u16 {
     60
@@ -180,9 +197,9 @@ fn build(scn: &Scenario) -> (Generator, LockEngine) {
         };
         lock.slots[i] = Some(Slot {
             key: s.key,
-            policy: match s.policy {
+            policy: match &s.policy {
                 PolicyCfg::Always => Policy::AlwaysValid,
-                PolicyCfg::Sequence {
+                &PolicyCfg::Sequence {
                     n,
                     window_s,
                     gap_min_s,
@@ -197,6 +214,39 @@ fn build(scn: &Scenario) -> (Generator, LockEngine) {
                     delay_min_s,
                     delay_max_s,
                 },
+                PolicyCfg::Path {
+                    leg_keys,
+                    leg_deadline_s,
+                    delay_max_s,
+                } => {
+                    assert!(leg_keys.len() >= 2 && leg_keys.len() <= MAX_PATH_LEGS);
+                    let mut lk = [0u8; MAX_PATH_LEGS];
+                    lk[..leg_keys.len()].copy_from_slice(leg_keys);
+                    Policy::Path {
+                        legs: leg_keys.len() as u8,
+                        leg_keys: lk,
+                        leg_deadline_s: *leg_deadline_s,
+                        delay_max_s: *delay_max_s,
+                    }
+                }
+                &PolicyCfg::DeadMan { beat_s } => Policy::DeadMan { beat_s },
+                PolicyCfg::Quorum {
+                    m,
+                    keys,
+                    window_s,
+                    alternating,
+                } => {
+                    assert!(keys.len() >= *m as usize && keys.len() <= MAX_QUORUM);
+                    let mut ks = [0u8; MAX_QUORUM];
+                    ks[..keys.len()].copy_from_slice(keys);
+                    Policy::Quorum {
+                        m: *m,
+                        n_keys: keys.len() as u8,
+                        keys: ks,
+                        window_s: *window_s,
+                        alternating: *alternating,
+                    }
+                }
             },
             gates: Gates::default(),
             action: match s.action.as_str() {
@@ -267,6 +317,9 @@ impl Emu {
                 let out = self.lock.enter_code(&code, self.now);
                 let s = describe(out);
                 self.event(format!("lock: {s}"));
+                // Relock consequences print (and become expectable) after
+                // the outcome that caused them.
+                self.drain_relocks();
             }
             ["lock", "status"] => self.cmd_status(),
 
@@ -282,6 +335,15 @@ impl Emu {
             _ => println!("? unknown: {line} (try: time/gen/lock/expect/quit)"),
         }
         true
+    }
+
+    fn drain_relocks(&mut self) {
+        let mask = self.lock.take_relocks();
+        for i in 0..8u8 {
+            if mask & (1 << i) != 0 {
+                self.event(format!("lock: RELOCK slot={i} (dead-man expired)"));
+            }
+        }
     }
 
     fn cmd_time(&mut self, words: &[&str]) {
@@ -302,6 +364,7 @@ impl Emu {
                 self.now += d * mul;
                 self.lock.tick(self.now);
                 println!("[t={}] +{}s", self.now, d * mul);
+                self.drain_relocks();
             }
             _ => println!("? time +<n>[s|m|h] | time set <unix>"),
         }
@@ -376,6 +439,7 @@ fn describe(o: Outcome) -> String {
         Outcome::Fired(s, a) => format!("FIRED slot={s} action={a:?}"),
         Outcome::Reset(s) => format!("RESET slot={s} (timing violation)"),
         Outcome::Replay(s) => format!("REPLAY slot={s} (ignored)"),
+        Outcome::Beat(s) => format!("BEAT slot={s} (sustain refreshed)"),
         Outcome::Negative(s, n) => format!("NEGATIVE slot={s} {n:?} (decoy tripwire)"),
         Outcome::LockedOut(s) => format!("LOCKEDOUT slot={s}"),
         Outcome::Invalid => "INVALID (armed slots reset)".into(),

@@ -79,5 +79,6 @@ Requires `rustup` (pulls the pinned toolchain + target via
 - [ ] USB FS provisioning console (`embassy-usb`, button-gated)
 - [ ] Lock link: nonce/HMAC command flow over the bit-bang master (+ soak
       against the real lock through actuation transients)
-- [ ] Policy engine: gates, Path/DeadMan machines, confirm-TOTP (HOTP receipt)
+- [ ] Policy engine: gate evaluation (GNSS/accel/RTC), confirm-TOTP (HOTP receipt)
+- [x] Path / DeadMan / Quorum state machines (ephemerkey-core, emulator-proven)
 - [ ] ESP32-C3 protocol: OTA staging, config file transport

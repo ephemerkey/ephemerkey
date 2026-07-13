@@ -1,0 +1,34 @@
+# Dead-man re-arm: first code unlocks; a fresh code must arrive every
+# <= 120 s or the lock snaps shut (RELOCK event) and re-arms. Stale codes
+# don't count — and anything that kills the sustain still emits RELOCK.
+
+echo == unlock ==
+gen reveal
+lock enter @1
+expect FIRED slot=0 action=Unlock
+
+echo == keep it alive: beats at +90 and +180 ==
+time +90
+gen reveal
+lock enter @2
+expect BEAT slot=0
+time +90
+gen reveal
+lock enter @3
+expect BEAT slot=0
+
+echo == miss the next beat: relock fires on the clock ==
+time +121
+expect RELOCK slot=0
+
+echo == re-armed: a fresh code unlocks again ==
+gen reveal
+lock enter @4
+expect FIRED slot=0 action=Unlock
+
+echo == a stale code is invalid AND slams the door (reset_on_invalid) ==
+time +60
+lock enter @1
+expect RELOCK slot=0
+
+quit

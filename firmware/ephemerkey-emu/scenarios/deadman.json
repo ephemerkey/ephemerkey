@@ -1,0 +1,14 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    { "secret": "12345678901234567890", "display": { "mode": "plain" } }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "progress": true,
+      "policy": { "type": "deadman", "beat_s": 120 }
+    }
+  ]
+}

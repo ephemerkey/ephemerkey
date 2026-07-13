@@ -1,0 +1,33 @@
+# Two-person rule: Alice (key 0) and Bob (key 1), both within 5 minutes,
+# strictly alternating — one person holding both devices must still juggle.
+
+echo == Alice alone twice: alternating violation resets the round ==
+gen reveal 0
+lock enter @1
+expect PROGRESS slot=0 1/2
+time +40
+gen reveal 0
+lock enter @2
+expect RESET slot=0
+
+echo == Alice then Bob: quorum met ==
+time +60
+gen reveal 0
+lock enter @3
+expect PROGRESS slot=0 1/2
+time +40
+gen reveal 1
+lock enter @4
+expect FIRED slot=0 action=Unlock
+
+echo == window expiry: a lone contribution goes stale after 5 min ==
+time +60
+gen reveal 0
+lock enter @5
+expect PROGRESS slot=0 1/2
+time +6m
+gen reveal 1
+lock enter @6
+expect PROGRESS slot=0 1/2
+
+quit
