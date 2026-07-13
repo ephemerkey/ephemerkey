@@ -82,18 +82,57 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
 - Powers everything: STM32 (VDD/VDDA/VDDUSB), MAX-M10S (VCC/VCC_RF/V_IO),
   LIS3DH, and the V_BCKP tap.
 - 0.4A capability comfortably covers the GNSS acquisition peak (~30mA) and USB.
+  (The optional WiFi module is expressly **not** on this rail — its 350mA TX
+  bursts get a dedicated LDO from VSYS; see the WiFi section.)
 - CFG1/2/3 set the output-voltage presets and operating mode per datasheet;
   SEL chooses between the two presets at runtime (e.g. a lower sleep rail);
   EN gated by the MCU or tied on.
 
 ### Accelerometer: LIS3DHTR (LGA-16)
 
-- 3-axis, low-power (µA-class), I2C — shares the I2C1 bus with nothing else
-  (GNSS is on UART), addr 0x18/0x19.
+- 3-axis, low-power (µA-class), I2C — on I2C1 (addr 0x18/0x19) alongside the
+  OLED (0x3C) and the audit-log EEPROM (0x50–0x53); GNSS is on UART.
 - **Wake-on-motion** (INT1) lets the MCU sleep in Stop mode and only run the
   GNSS/TOTP pipeline when the device is handled.
 - **Tamper detection** (INT2 / free-fall / orientation) — optional policy to
   zeroize the TOTP secret in flash if the enclosure is disturbed while armed.
+
+### WiFi (optional): ESP32-C3-MINI-1 + AP2112K-3.3
+
+Optional 2.4GHz link (provisioning, NTP cross-check, later OTA). Lives on its
+own sheet (`wifi.kicad_sch`) — **depopulate the sheet to omit**; nothing else
+references it.
+
+- **Own regulator, own rail.** AP2112K-3.3 (600mA LDO, U6) fed from **VSYS**,
+  not from the 3V3 buck-boost rail: an 802.11b TX burst is **350mA @ +21dBm**
+  (C3-MINI-1 datasheet), which would eat the TPS63900's 400mA rating at
+  coincident peaks and ripple the GNSS VCC_RF supply. Off-state cost: AP2112K
+  standby 0.01µA typ / 1µA max; EN-low engages an internal 60Ω VOUT discharge,
+  so a power cycle re-straps cleanly in milliseconds.
+- **3 MCU pins total:**
+  - **PB5 = WIFI_PWR** → U6 EN (R26 100k pulldown — off by default, incl.
+    through MCU reset). No ESP EN/RESET pin: **power cycle = reset** (module EN
+    has a local 10k+1µF RC).
+  - **PA2 = WIFI_TXD** (LPUART1_TX/USART2_TX) → ESP IO20 via 1k. **Doubles as
+    the IO9 boot strap** (10k from the TX net to IO9): hold PA2 GPIO-low across
+    a WIFI_PWR power-up → ROM UART loader; leave Hi-Z/idle-high → flash boot.
+  - **PA3 = WIFI_RXD** (LPUART1_RX) ← ESP IO21 via 1k; LPUART1 gives
+    wake-from-Stop on RX.
+- **Flashing the ESP:** STM32 firmware exposes a USB-CDC transparent bridge
+  (maps DTR/RTS semantics onto the PWR/strap sequence) — stock `esptool.py`
+  flashes MD2 through the MCU unmodified.
+- **Later (STM32-from-WiFi):** the app jumps to a UART bootloader on LPUART1.
+  PA2/PA3 = USART2 = an STM32U0 ROM-bootloader UART (AN2606 — verify for U083),
+  so R24/R25 (0R, DNP) from ESP IO4/IO5 to BOOT0/NRST let the ESP reflash even
+  a blank MCU.
+- **FW policy:** prefer WiFi when USB-powered (VSYS ≈4.6V → full 3.3V). On
+  battery below ~3.5V the LDO drops out toward the C3's 3.0V floor — gate WiFi
+  on power state. Keep WiFi TX and GNSS acquisition time-separated (RF hygiene);
+  place the module's PCB antenna at a board edge with the Espressif keep-out.
+- **Displaced pins:** ACC INT1 PA2→PB3 (EXTI3), ACC INT2 PA3→PA8 (EXTI8 —
+  retires the optional GNSS_EN earmark). PB5 is the one spare that cannot take
+  an accel INT (PA5/BTN1 owns EXTI line 5), so it carries the WIFI_PWR output.
+  **No spare GPIO remains** on the 32-pin package.
 
 ## Geofence + TOTP Logic
 
@@ -149,6 +188,9 @@ GNSS kept hot via **V_BCKP** (see decisions below).
                    ~75nA Iq, L=2.2µH,          ├── LIS3DH     VDD / VDD_IO          (~2µA–2mA)
                    Cin/Cout per DS)            ├── V_BCKP tap (always-on, GNSS RTC/ephemeris backup)
                                                └── pull-ups, LEDs
+
+ (SYS also feeds) ► AP2112K-3.3 ── WIFI_3V3 ── ESP32-C3-MINI-1   (OPTIONAL; EN ← PB5, default off,
+                    (600mA LDO)                (350mA TX bursts)   <1µA off — WiFi never loads the 3V3 rail)
 ```
 
 SYS (TPS63900 VIN) is VBUS-via-Schottky (~4.7V) when USB present, else BAT
@@ -221,8 +263,8 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 5 | VDDA/VREF+ | 3V3 analog | 1µF + 10nF |
 | 6 | PA0-CK_IN | GNSS PPS in | TIM2_CH1 input capture (RTC discipline) |
 | 7 | PA1 | GNSS EXTINT | MCU → GNSS wake / time-mark |
-| 8 | PA2 | LIS3DH INT1 | EXTI wake-on-motion |
-| 9 | PA3 | LIS3DH INT2 | EXTI tamper / free-fall |
+| 8 | PA2 | WIFI_TXD | LPUART1_TX → ESP IO20 (1k); doubles as IO9 boot strap (10k) |
+| 9 | PA3 | WIFI_RXD | LPUART1_RX ← ESP IO21 (1k); wake-from-Stop on RX |
 | 10 | PA4 | GNSS RESET_N | open-drain output to GNSS |
 | 11 | PA5 | Button | SW1 user button 1 (internal pull-up, to GND) |
 | 12 | PA6 | LED green | in-fence / code-valid |
@@ -231,7 +273,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 15 | PB1 | LOCK_SCL | I2C SCL → lock (authenticated link; ephemerkey = master) |
 | 16 | VSS_1 | GND | |
 | 17 | VDDUSB | 3V3 USB | 100nF (USB transceiver supply) |
-| 18 | PA8 | Spare / GNSS_EN | optional GNSS power-gate FET control |
+| 18 | PA8 | LIS3DH INT2 | EXTI tamper / free-fall (EXTI8) |
 | 19 | PA9 | USART1_TX | → GNSS RXD (NMEA/UBX) |
 | 20 | PA10 | USART1_RX | ← GNSS TXD (NMEA/UBX) |
 | 21 | PA11 | USB_DM | USB FS (provisioning/console) |
@@ -239,27 +281,62 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 23 | PA13 | SWDIO | debug |
 | 24 | PA14 | SWCLK | debug |
 | 25 | PA15 | Button | SW2 user button 2 (internal pull-up, to GND) |
-| 26 | PB3 | Spare | |
+| 26 | PB3 | LIS3DH INT1 | EXTI wake-on-motion (EXTI3) |
 | 27 | PB4 | BUZZER_PWM | TIM3_CH1 → LS1 buzzer via Q2 low-side driver |
-| 28 | PB5 | Spare | |
-| 29 | PB6 | I2C1_SCL | LIS3DH (and optional GNSS DDC) |
-| 30 | PB7 | I2C1_SDA | LIS3DH (and optional GNSS DDC) |
+| 28 | PB5 | WIFI_PWR | → AP2112K EN (100k pulldown — WiFi off by default) |
+| 29 | PB6 | I2C1_SCL | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
+| 30 | PB7 | I2C1_SDA | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
 | 31 | PF3-BOOT0 | Button + BOOT0 | SW3 user button 3 (to +3V3); 10k pull-down = boot from flash. Hold SW3 at reset → USB DFU |
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
-**Peripheral summary:** USART1 (GNSS), I2C (master, authenticated lock link: PB0/PB1, wake-on-I2C), I2C1 (accel),
-TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning), 2×EXTI (accel),
-TIM3_CH1 (buzzer PWM, PB4), SWD (debug). ~5 spare GPIO (PA8, PA15, PB3, PB5).
+**Peripheral summary:** USART1 (GNSS), LPUART1 (WiFi, wake-from-Stop), I2C
+(master, authenticated lock link: PB0/PB1, wake-on-I2C), I2C1 (accel, OLED,
+log EEPROM), TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning),
+2×EXTI (accel, PB3/PA8), TIM3_CH1 (buzzer PWM, PB4), SWD (debug), WIFI_PWR
+gate (PB5).
+**No spare GPIO** — the 32-pin package is fully allocated.
 
 **Notes**
 - USB DM/DP must land on PA11/PA12. On the UFQFPN-32, PA9/PA10 and PA11/PA12
   share pads with a SYSCFG remap — here PA9/PA10 (pins 19/20) carry USART1 and
   PA11/PA12 (pins 21/22) carry USB. Verify the remap configuration in firmware
   (`SYSCFG` PA11/PA12 remap) matches this intent.
-- GNSS UART could move to **LPUART1** if wake-on-RX in Stop mode is desired;
-  the duty-cycle design keeps the MCU awake while GNSS is on, so USART1 is the
-  baseline.
+- GNSS UART stays on **USART1** — the duty-cycle design keeps the MCU awake
+  while GNSS is on. LPUART1 (wake-on-RX in Stop mode) is allocated to the WiFi
+  link on PA2/PA3.
+
+## Storage, Logging & OTA
+
+Three data classes, three homes — chosen so nothing secret ever leaves the MCU
+and no new pins are spent (the 32-pin package is fully allocated):
+
+| Data | Where | Why |
+|------|-------|-----|
+| Secrets (TOTP, lock-pairing, device/log keys) + config (geofence table) | **Internal flash**, last 2×2KB pages, ping-pong journal + CRC | Desolder-proof; hidden from SWD via RDP (+HDP secure-hide — verify RM0503). Config is <1KB and rarely written. |
+| Audit log (code emissions, unlock commands, fence enter/exit, tamper, power events) | **U7 M24M02E-F** (2Mbit I2C EEPROM, UFDFPN8 2×3mm, `storage.kicad_sch`) at 0x50–0x53 on I2C1 | Zero new pins — rides the existing accel/OLED bus. 256KB ≈ 8,000 records ≈ 13 months rolling at 20 events/day. 350nA standby; 4M-cycle endurance; lockable 256B ID page for board serial. |
+| Staged STM32 OTA image | **ESP32-C3's own 4MB flash** (WiFi sheet) | The ESP downloads it anyway; the image survives power-fail mid-update, so no internal A/B slots are needed. |
+
+**Log format.** Fixed 32B records in an append-only ring: sequence, RTC
+timestamp, event type, fix quality, truncated code hash, and a **chained
+HMAC-SHA1 tag** (key = internal device key; reuses smalltotp's HMAC). Records
+are **encrypted** with an internal-flash key before hitting the external chip —
+the EEPROM is desolderable, so it stores no plaintext and no secrets, and any
+excised or edited record breaks every subsequent chain tag (tamper-evident
+audit trail). Torn writes are detected by CRC + sequence and skipped. 4M-cycle
+endurance → decades of ring logging.
+
+**OTA flow (STM32-from-WiFi; later firmware work, no extra hardware):**
+
+1. ESP32 downloads the STM32 image into its own flash partition and verifies
+   the image HMAC (shared device key; asymmetric signatures possible later).
+2. The STM32 app sets an "update pending" flag in config flash and reboots
+   into the bootloader (first ~16KB, WRP write-protected, never self-erases).
+3. The bootloader streams CRC'd chunks over LPUART1, verifies the whole-image
+   tag, then erases and rewrites the app region.
+4. Power-fail ≠ brick: the image persists in ESP flash, so recovery is
+   "bootloader asks again." Fallbacks stay layered: USB DFU via ROM bootloader
+   (SW3/BOOT0) on the bench; R24/R25 DNP links for ESP-driven ROM recovery.
 
 ## Code Output Interface (to the companion lock)
 
