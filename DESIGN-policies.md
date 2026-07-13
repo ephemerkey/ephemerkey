@@ -177,3 +177,9 @@ turns it into a required input for the next cycle.
 - Whether confirm-TOTP should be HOTP (event counter) rather than TOTP —
   leaning HOTP: it's an event receipt, not a time proof, and it never
   collides on two events in one period.
+
+**Resolved since first draft:** the provisioning encoding, key model (owner
+Ed25519 / device Ed25519+X25519, "set"-bound), transports, and the web UI
+that configures these policies are specified in `DESIGN-management.md`
+(CBOR + COSE_Sign1/Encrypt0). The "signed config file" sketched in
+`provision.rs` is that envelope.
