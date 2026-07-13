@@ -284,15 +284,15 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 26 | PB3 | LIS3DH INT1 | EXTI wake-on-motion (EXTI3) |
 | 27 | PB4 | BUZZER_PWM | TIM3_CH1 → LS1 buzzer via Q2 low-side driver |
 | 28 | PB5 | WIFI_PWR | → AP2112K EN (100k pulldown — WiFi off by default) |
-| 29 | PB6 | I2C1_SCL | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
-| 30 | PB7 | I2C1_SDA | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
+| 29 | PB6 | I2C1_SCL | LIS3DH + OLED + log EEPROM + fuel gauge (and optional GNSS DDC) |
+| 30 | PB7 | I2C1_SDA | LIS3DH + OLED + log EEPROM + fuel gauge (and optional GNSS DDC) |
 | 31 | PF3-BOOT0 | Button + BOOT0 | SW3 user button 3 (to +3V3); 10k pull-down = boot from flash. Hold SW3 at reset → USB DFU |
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
 **Peripheral summary:** USART1 (GNSS), LPUART1 (WiFi, wake-from-Stop), I2C3
 (master, authenticated lock link: PA6/PA7), I2C1 (accel, OLED,
-log EEPROM), TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning),
+log EEPROM, fuel gauge), TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning),
 2×EXTI (accel, PB3/PA8), TIM3_CH1 (buzzer PWM, PB4), SWD (debug), WIFI_PWR
 gate (PB5).
 **No spare GPIO** — the 32-pin package is fully allocated.
@@ -464,6 +464,7 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
 | Li-ion charger | MCP73831T-2ACI/OT | SOT-23-5 | 1 | 1S Li-ion charger (4.2V) | C424093 | ~2.7k | extended |
 | USB ESD | USBLC6-2SC6 | SOT-23-6 | 1 | USB VBUS/D± ESD | C2687116 | ~231k | extended |
 | Load-share FET | AO3401A | SOT-23 | 1 | USB/battery power path (P-FET) | C15127 | ~1.2M | extended |
+| Fuel gauge | MAX17048G+T10 | TDFN-8 2×2 | 1 | 1S battery SoC (ModelGauge), I2C1 @0x36, 3µA hibernate | C2682616 | — | extended |
 
 > LCSC numbers verified 2026-06-21 (jlcsearch API; STM32U083KCU6 confirmed on
 > the LCSC storefront under C22459164, which jlcsearch does not index). Stock

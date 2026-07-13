@@ -3091,8 +3091,277 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "ephemerkey:MAX17048"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at 0 12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "MAX17048"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "Package_DFN_QFN:TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.2mm"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/max17048-max17049.pdf"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "1-cell Li-ion fuel gauge (ModelGauge), I2C 0x36, 3uA hibernate"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "Analog Devices"
+				(at 0 -20.32 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "MAX17048G+T10"
+				(at 0 -22.86 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C2682616"
+				(at 0 -25.4 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "MAX17048_0_1"
+				(rectangle
+					(start -7.62 10.16)
+					(end 7.62 -10.16)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin input line
+					(at -10.16 5.08 0)
+					(length 2.54)
+					(name "CELL"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 0 0)
+					(length 2.54)
+					(name "QSTRT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -10.16 -5.08 0)
+					(length 2.54)
+					(name "CTG"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 12.7 270)
+					(length 2.54)
+					(name "VDD"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -12.7 90)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 2.54 -12.7 90)
+					(length 2.54)
+					(name "EP"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "9"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin bidirectional line
+					(at 10.16 5.08 180)
+					(length 2.54)
+					(name "SDA"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 10.16 2.54 180)
+					(length 2.54)
+					(name "SCL"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin open_collector line
+					(at 10.16 -5.08 180)
+					(length 2.54)
+					(name "~{ALRT}"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
-	(text "POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.\n\nREF  PART            PIN  SIGNAL  CONNECTION                    REF  PART           PIN    SIGNAL    CONNECTION\n---  --------------  ---  ------  --------------------------    ---  -------------  -----  --------  -----------------------------\nJ3   USB-C 16P       --   VBUS    VBUS_5V                       U4   MCP73831-2-OT  1      STAT      D4 CHG LED + R8 1k\n     (horizontal)    --   GND     GND                                (SOT-23-5)     2      VSS       GND\n                     --   CC1     R4 5.1k -> GND                                    3      VBAT      BAT+  (C11 10uF)\n                     --   CC2     R5 5.1k -> GND                                    4      VDD       VBUS_5V  (C10 10uF)\n                     --   D+      U3 -> USB_DP / PA12                               5      PROG      R6 4.7k -> GND  (Ichg ~213mA)\n                     --   D-      U3 -> USB_DM / PA11\n                     --   SBU1/2  NC                            Q1   AO3401A PMOS   1      G         VBUS_5V ; R7 100k -> GND\n                     --   SHIELD  GND                                load-share     2      S         VSYS   <-- NOT BAT+\n                                                                     (SOT-23)       3      D         BAT+   <-- NOT VSYS\nJ5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)\n     GT-USB-7051A    --   GND     GND                           D3   B5819W         A      --        VBUS_5V\n                     --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS\n                     --   CC2     R16 5.1k -> GND\n                     --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)\n                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (preset 1)\n                                                                                    3/4/5  CFG1/2/3  strap = 3.3V out\nU3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)\n     (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH\n                     3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH\n                     4    I/O2    D- (MCU, PA11)                                    8      GND       GND\n                     5    VBUS    VBUS_5V                                           10     VIN       VSYS  (C12 10uF)\n                     6    I/O1    D+ (MCU, PA12)                                    11     EP        GND\n\n                                                                J4   JST-PH (RA)    1      BAT+      BAT+  (1S Li-ion, protected)\n                                                                                    2      GND       GND\n\nLOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BAT+  (USB out: Q1 ON via R7).\n  A PMOS body diode conducts D->S.  With D=BAT+ / S=VSYS it points BAT+ -> VSYS: the battery always reaches the\n  load, and USB can never back-feed the cell.  Swapping S/D forward-biases the body diode when VSYS ~4.7V > BAT+,\n  dumping uncontrolled charge current into the cell and bypassing U4.\n  The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.\n\nBULK:  C15 = VBUS_5V.   C16 = BAT+."
+	(text "POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.\n\nREF  PART            PIN  SIGNAL  CONNECTION                    REF  PART           PIN    SIGNAL    CONNECTION\n---  --------------  ---  ------  --------------------------    ---  -------------  -----  --------  -----------------------------\nJ3   USB-C 16P       --   VBUS    VBUS_5V                       U4   MCP73831-2-OT  1      STAT      D4 CHG LED + R8 1k\n     (horizontal)    --   GND     GND                                (SOT-23-5)     2      VSS       GND\n                     --   CC1     R4 5.1k -> GND                                    3      VBAT      BAT+  (C11 10uF)\n                     --   CC2     R5 5.1k -> GND                                    4      VDD       VBUS_5V  (C10 10uF)\n                     --   D+      U3 -> USB_DP / PA12                               5      PROG      R6 4.7k -> GND  (Ichg ~213mA)\n                     --   D-      U3 -> USB_DM / PA11\n                     --   SBU1/2  NC                            Q1   AO3401A PMOS   1      G         VBUS_5V ; R7 100k -> GND\n                     --   SHIELD  GND                                load-share     2      S         VSYS   <-- NOT BAT+\n                                                                     (SOT-23)       3      D         BAT+   <-- NOT VSYS\nJ5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)\n     GT-USB-7051A    --   GND     GND                           D3   B5819W         A      --        VBUS_5V\n                     --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS\n                     --   CC2     R16 5.1k -> GND\n                     --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)\n                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (preset 1)\n                                                                                    3/4/5  CFG1/2/3  strap = 3.3V out\nU3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)\n     (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH\n                     3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH\n                     4    I/O2    D- (MCU, PA11)                                    8      GND       GND\n                     5    VBUS    VBUS_5V                                           10     VIN       VSYS  (C12 10uF)\n                     6    I/O1    D+ (MCU, PA12)                                    11     EP        GND\n\n                                                                J4   JST-PH (RA)    1      BAT+      BAT+  (1S Li-ion, protected)\n                                                                                    2      GND       GND\n\nLOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BAT+  (USB out: Q1 ON via R7).\n  A PMOS body diode conducts D->S.  With D=BAT+ / S=VSYS it points BAT+ -> VSYS: the battery always reaches the\n  load, and USB can never back-feed the cell.  Swapping S/D forward-biases the body diode when VSYS ~4.7V > BAT+,\n  dumping uncontrolled charge current into the cell and bypassing U4.\n  The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.\n\nBULK:  C15 = VBUS_5V.   C16 = BAT+.\n\nU8 MAX17048 FUEL GAUGE (TDFN-8 2x2 + EP; ModelGauge 1S SoC; 3uA hibernate; I2C1 target @0x36 fixed):\n  1  CTG    GND                                5  /ALRT  NC (no spare MCU pin -- FW polls SoC; 0x36 has an alert reg)\n  2  CELL   BAT+  (sense AT the cell terminal, 6  QSTRT  GND (unused; do NOT float)\n            J4.1 side -- NOT VSYS)             7  SCL    <- PB6 (I2C1 -- shared w/ U5 0x18, DS1 0x3C, U7 0x50-53;\n  3  VDD    BAT+  (C31 100nF close)                       pull-ups R9/R10 on Sensors sheet)\n  4  GND    GND                                8  SDA    <> PB7 (I2C1)\n  9  EP     GND\n  SDA/SCL are tolerant above VDD (datasheet: logic independent of VDD) -> 3V3 bus vs. fading BAT+ is fine.\n  VERIFY vs DS before fab: EP-to-GND requirement and the TDFN-8 2x2 land (bundled EP0.8x1.2 footprint vs 21-0168)."
 		(exclude_from_sim no)
 		(at 12 168.4 0)
 		(effects
@@ -7261,6 +7530,152 @@
 			(project "ephemerkey"
 				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
 					(reference "C16")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "ephemerkey:MAX17048")
+		(at 297.18 66.04 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0454d3cc-607e-476e-9178-f2a3a4068089")
+		(property "Reference" "U8"
+			(at 297.18 49.53 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "MAX17048"
+			(at 297.18 82.55 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Package_DFN_QFN:TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.2mm"
+			(at 297.18 85.09 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/max17048-max17049.pdf"
+			(at 297.18 87.63 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "LCSC" "C2682616"
+			(at 297.18 95.25 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "MPN" "MAX17048G+T10"
+			(at 297.18 92.71 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Manufacturer" "Analog Devices"
+			(at 297.18 90.17 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "8ca6fd16-b359-486f-a074-0085a73a13f6"))
+		(pin "2" (uuid "01fb7dc9-50f8-45f5-aa65-0aacdd7d3c06"))
+		(pin "3" (uuid "e992e391-82dd-43d1-a1e0-ff3cbbd7110e"))
+		(pin "4" (uuid "2ef2d8b8-c73e-45bd-ad20-e4337cdf4d65"))
+		(pin "5" (uuid "e405fa91-1ba5-41b0-b310-1b869527ee8d"))
+		(pin "6" (uuid "dda5d3ac-5876-4eb2-843b-337ed72241f0"))
+		(pin "7" (uuid "f67293fc-29bc-4f9e-a746-1d93a4f4bf48"))
+		(pin "8" (uuid "a40cb484-9801-432d-9a5b-8ff28364eafa"))
+		(pin "9" (uuid "5e057c05-3025-466a-a494-ed62a891672e"))
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
+					(reference "U8")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 317.5 66.04 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "ff48e239-ed5f-4291-96a1-dd9a9094f171")
+		(property "Reference" "C31"
+			(at 320.04 64.77 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 320.04 67.31 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 317.5 71.12 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 317.5 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 220.98 152.4 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 317.5 76.2 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "a2b5f552-1ca2-4443-8a13-79167d803a95")
+		)
+		(pin "2"
+			(uuid "c19462ef-13e4-4cad-ae98-21d2721186b2")
+		)
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
+					(reference "C31")
 					(unit 1)
 				)
 			)

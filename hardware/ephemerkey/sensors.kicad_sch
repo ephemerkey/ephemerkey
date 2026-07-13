@@ -955,7 +955,7 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.\nU5 LIS3DH:\n  1  VDD_IO   +3V3 (C24 100nF)        9  INT2     -> PA3 (tamper / free-fall)\n  2  NC                              10  RES      -> GND\n  3  NC                              11  INT1     -> PA2 (wake-on-motion)\n  4  SCL      -> PB6 (I2C1)          12  GND      GND\n  5  GND      GND                    13  ADC3     NC\n  6  SDA      -> PB7 (I2C1)          14  VDD      +3V3 (C23 100nF)\n  7  SDO/SA0  addr 0x18(GND)/0x19    15  ADC2     NC\n  8  CS       +3V3 (force I2C)       16  ADC1     NC\nI2C1:  R9/R10 4.7k pull-ups to +3V3.   Tamper (INT2) may zeroize the TOTP secret (DESIGN.md Security)."
+	(text "Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.\nU5 LIS3DH:\n  1  VDD_IO   +3V3 (C24 100nF)        9  INT2     -> PA8 (tamper / free-fall)\n  2  NC                              10  RES      -> GND\n  3  NC                              11  INT1     -> PB3 (wake-on-motion)\n  4  SCL      -> PB6 (I2C1)          12  GND      GND\n  5  GND      GND                    13  ADC3     NC\n  6  SDA      -> PB7 (I2C1)          14  VDD      +3V3 (C23 100nF)\n  7  SDO/SA0  addr 0x18(GND)/0x19    15  ADC2     NC\n  8  CS       +3V3 (force I2C)       16  ADC1     NC\nI2C1:  R9/R10 4.7k pull-ups to +3V3 — serve U5 + DS1 (OLED, MCU sheet) + U7 (EEPROM, Storage sheet) + U8 (fuel gauge 0x36, PSU sheet).\nTamper (INT2) may zeroize the TOTP secret (DESIGN.md Security)."
 		(exclude_from_sim no)
 		(at 46.99 138.684 0)
 		(effects

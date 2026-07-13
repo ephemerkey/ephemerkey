@@ -25,7 +25,7 @@ provisioning mode) or the WiFi/ESP32-C3 link — see `src/provision.rs` and
 | `src/main.rs` | boot, role dispatch, LEDs (PB0/PB1), buttons (PA5/PA15), PPS placeholder (PA0) |
 | `src/gnss.rs` | MAX-M10S on USART1 (PA9/PA10, DMA RX) + RESET_N (PA4, OD) + EXTINT (PA1) |
 | `src/lock.rs` | hardware I2C3 master to the lock board (PA6 SDA / PA7 SCL) — see below |
-| `src/sensors.rs` | I2C1 (PB6/PB7): LIS3DH @0x18, OLED, M24M02E log EEPROM; INT1/INT2 EXTI |
+| `src/sensors.rs` | I2C1 (PB6/PB7): LIS3DH @0x18, OLED @0x3C, M24M02E log EEPROM @0x50-53, MAX17048 fuel gauge @0x36; INT1/INT2 EXTI |
 | `src/wifi.rs` | ESP32-C3 on LPUART1 (PA2/PA3) + PB5 power gate (off by default) |
 | `src/buzzer.rs` | TIM3_CH1 PWM on PB4 (boot chirp) |
 | `src/config.rs` | role + persistent config (flash journal TODO) |

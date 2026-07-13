@@ -1,9 +1,12 @@
-//! I2C1 sensor bus (PB6 SCL / PB7 SDA): LIS3DH accel @0x18, OLED, M24M02E-F
-//! log EEPROM @0x50-0x53 — plus the LIS3DH interrupt pins.
+//! I2C1 sensor bus (PB6 SCL / PB7 SDA): LIS3DH accel @0x18, OLED @0x3C,
+//! M24M02E-F log EEPROM @0x50-0x53, MAX17048 fuel gauge @0x36 — plus the
+//! LIS3DH interrupt pins.
 //!
 //! PB3 = INT1 (wake-on-motion, EXTI3), PA8 = INT2 (tamper/free-fall, EXTI8).
+//! The MAX17048 has no ALRT routing (no spare MCU pin) — firmware polls SoC.
 //!
-//! Scaffold: probes the LIS3DH WHO_AM_I register, then logs interrupt edges.
+//! Scaffold: probes the LIS3DH WHO_AM_I and MAX17048 VERSION registers, then
+//! logs interrupt edges.
 
 use defmt::{info, warn};
 use embassy_futures::select::{select, Either};
@@ -23,6 +26,13 @@ bind_interrupts!(struct Irqs {
 const LIS3DH_ADDR: u8 = 0x18;
 const LIS3DH_WHO_AM_I: u8 = 0x0F; // reads 0x33
 
+const MAX17048_ADDR: u8 = 0x36;
+const MAX17048_VERSION: u8 = 0x08; // 16-bit BE, reads 0x001x
+#[allow(dead_code)]
+const MAX17048_VCELL: u8 = 0x02; // 78.125 uV/LSB
+#[allow(dead_code)]
+const MAX17048_SOC: u8 = 0x04; // 1/256 %/LSB
+
 #[embassy_executor::task]
 pub async fn task(
     i2c: Peri<'static, I2C1>,
@@ -41,6 +51,12 @@ pub async fn task(
     match bus.blocking_write_read(LIS3DH_ADDR, &[LIS3DH_WHO_AM_I], &mut who) {
         Ok(()) => info!("lis3dh: WHO_AM_I = {:#04x}", who[0]),
         Err(e) => warn!("lis3dh: probe failed: {}", e),
+    }
+
+    let mut ver = [0u8; 2];
+    match bus.blocking_write_read(MAX17048_ADDR, &[MAX17048_VERSION], &mut ver) {
+        Ok(()) => info!("max17048: VERSION = {:#06x}", u16::from_be_bytes(ver)),
+        Err(e) => warn!("max17048: probe failed: {}", e),
     }
 
     // LIS3DH INTs push-pull active-high by default config.
