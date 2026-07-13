@@ -22,9 +22,9 @@ provisioning mode) or the WiFi/ESP32-C3 link — see `src/provision.rs` and
 
 | File | Subsystem |
 |------|-----------|
-| `src/main.rs` | boot, role dispatch, LEDs (PA6/PA7), buttons (PA5/PA15), PPS placeholder (PA0) |
+| `src/main.rs` | boot, role dispatch, LEDs (PB0/PB1), buttons (PA5/PA15), PPS placeholder (PA0) |
 | `src/gnss.rs` | MAX-M10S on USART1 (PA9/PA10, DMA RX) + RESET_N (PA4, OD) + EXTINT (PA1) |
-| `src/lock.rs` | **bit-banged** I2C master to the lock board (PB0/PB1) — see below |
+| `src/lock.rs` | hardware I2C3 master to the lock board (PA6 SDA / PA7 SCL) — see below |
 | `src/sensors.rs` | I2C1 (PB6/PB7): LIS3DH @0x18, OLED, M24M02E log EEPROM; INT1/INT2 EXTI |
 | `src/wifi.rs` | ESP32-C3 on LPUART1 (PA2/PA3) + PB5 power gate (off by default) |
 | `src/buzzer.rs` | TIM3_CH1 PWM on PB4 (boot chirp) |
@@ -35,16 +35,18 @@ provisioning mode) or the WiFi/ESP32-C3 link — see `src/provision.rs` and
 Every pin binding is type-checked against the U083 AF table at compile time —
 the crate builds only if the DESIGN.md pin budget is electrically coherent.
 
-### Hardware finding: PB0/PB1 have no I2C silicon
+### Hardware finding → rev 0.2 pin swap
 
-The pin budget assigns the lock link to PB0/PB1, but on the U083 those pins
-carry **no I2C alternate function** (only LCD/LPTIM3/SPI1-CS/UART-flow). The
-link is therefore a software open-drain master (`src/lock.rs`). This is
-acceptable-to-preferable: the lock glitches the bus during actuation
-(~0.4 s bursts — see `../lock-attiny/README.md`), and a bit-banged master
-does `bus_clear()` + retry with no peripheral error-state to unwedge. If
-hardware I2C is ever required, the schematic must re-pin (e.g. swap the LEDs
-PA6/PA7 ↔ PB0/PB1 to free I2C3).
+The original pin budget put the lock link on PB0/PB1, which carry **no I2C
+alternate function** on the U083 (only LCD/LPTIM3/SPI1-CS/UART-flow) — caught
+by this crate's compile-time AF check. Resolution: the lock link and the LEDs
+swapped pins. The link now rides **hardware I2C3 on PA6 (SDA) / PA7 (SCL),
+AF4**; the LEDs (function-agnostic) took PB0/PB1. Schematic + DESIGN.md are
+updated to match.
+
+The bus-transient requirement survives the swap: the lock glitches SDA/SCL
+for ~0.4 s during actuation (see `../lock-attiny/README.md`), so the master
+re-inits the peripheral + bus-clears + retries on any error.
 
 ### Timer allocation
 

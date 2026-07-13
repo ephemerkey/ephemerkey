@@ -44,9 +44,10 @@ async fn main(spawner: Spawner) {
     let cfg = config::load();
     info!("ephemerkey-rs boot, role: {}", cfg.role);
 
-    // PA6 green = in-fence / code-valid, PA7 red = out-of-fence / fault.
-    let led_green = Output::new(p.PA6, Level::Low, Speed::Low);
-    let _led_red = Output::new(p.PA7, Level::Low, Speed::Low);
+    // PB0 green = in-fence / code-valid, PB1 red = out-of-fence / fault.
+    // (Rev 0.2 swap: LEDs took PB0/PB1 so the lock link gets I2C3 on PA6/PA7.)
+    let led_green = Output::new(p.PB0, Level::Low, Speed::Low);
+    let _led_red = Output::new(p.PB1, Level::Low, Speed::Low);
 
     // PA0 = GNSS PPS. Held as a plain input until the TIM2_CH1 input-capture
     // RTC-discipline path lands.
@@ -70,9 +71,7 @@ async fn main(spawner: Spawner) {
             spawner.spawn(gnss::task(p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1).unwrap());
         }
         config::Role::LockController => {
-            // Bit-banged open-drain master — PB0/PB1 have no I2C AF on the
-            // U083 (see lock.rs).
-            spawner.spawn(lock::task(p.PB1, p.PB0).unwrap());
+            spawner.spawn(lock::task(p.I2C3, p.PA7, p.PA6).unwrap());
         }
     }
     spawner.spawn(buttons(Input::new(p.PA5, Pull::Up), Input::new(p.PA15, Pull::Up)).unwrap());

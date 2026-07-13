@@ -262,10 +262,10 @@ MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6,
   9   PA3             WIFI_RXD (LPUART1_RX)      25  PA15            BTN2 SW2 (pull-up)
  10   PA4             GNSS_RESET_N (OD out)      26  PB3             ACC_INT1 (EXTI wake)
  11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             BUZZER_PWM (TIM3_CH1) -> R13 -> Q2
- 12   PA6             LED_GRN  D1 + R2 1k        28  PB5             WIFI_PWR -> U6 EN (WiFi)
- 13   PA7             LED_RED  D2 + R3 1k        29  PB6             I2C1_SCL -> U5,U7,DS1
- 14   PB0             LOCK_SDA <> J2.3 (I2C R11)  30  PB7             I2C1_SDA -> U5,U7,DS1
- 15   PB1             LOCK_SCL -> J2.4 (I2C R12)  31  PF3/BOOT0       BTN3 SW3 + DFU
+ 12   PA6             LOCK_SDA <> J2.3 (I2C3 R11)  28  PB5             WIFI_PWR -> U6 EN (WiFi)
+ 13   PA7             LOCK_SCL -> J2.4 (I2C3 R12)  29  PB6             I2C1_SCL -> U5,U7,DS1
+ 14   PB0             LED_GRN  D1 + R2 1k         30  PB7             I2C1_SDA -> U5,U7,DS1
+ 15   PB1             LED_RED  D2 + R3 1k         31  PF3/BOOT0       BTN3 SW3 + DFU
  16   VSS             GND                        32  VSS  / EP       GND
 RTC:  Y1 32.768kHz across PC14/PC15; C1,C2 12pF load caps (match to Y1 CL; trim via RTC SMOOTHCALIB).
 BUZZER:  LS1 MLT-8530 (3.6V magnetic transducer, ~2.7kHz, 95mA): pin1 = +3V3, pin2 = BUZZ_DRV (Q2 drain).
@@ -282,8 +282,10 @@ J2 LOCK IF (RA JST-PH 4-pin, S4B-PH-K; AUTHENTICATED I2C; ephemerkey = MASTER, l
       ~3-4A from VSYS -> exceeds JST-PH (~2A/contact) and ephemerkey's load-share path; keep actuation to the 6V servo /
       low duty w/ the lock's reservoir caps, or run a heavier dedicated power feed to the lock.
       Wake-on-I2C (no discrete line): lock wakes on SCL START; master sends a dummy/wake xfer then retries.
-      I2C pull-ups R11/R12 4.7k -> +3V3 (KEEP at 3V3: STM32 PB0/PB1 are not >3.6V tolerant -- do NOT pull to VSYS; the
-      lock's I2C VIH ~0.7*VSYS is met by a 3V3 bus across the discharge curve).  AUTH = HMAC-SHA1 (reuse smalltotp).
+      PINS: PA6/PA7 = hardware I2C3 (AF4).  (Swapped with the LEDs, which moved to PB0/PB1: PB0/PB1 carry NO
+      I2C alternate function on the U083 -- found by the fw pin-AF compile check.)
+      I2C pull-ups R11/R12 4.7k -> +3V3 (KEEP at 3V3 -- do NOT pull to VSYS: 3V3 idle meets the lock's VIH across
+      the discharge curve, and verify PA6/PA7 V_tol in the DS before reconsidering).  AUTH = HMAC-SHA1 (reuse smalltotp).
 DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)  4 = SDA (PB7).
       Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
 
