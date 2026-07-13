@@ -1,0 +1,48 @@
+[package]
+name = "ephemerkey-rs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey STM32U083 firmware — GPS-geofenced TOTP generator (Embassy async)"
+
+[dependencies]
+# Embassy async HAL + executor. Chip feature = STM32U083KCU6 (UFQFPN-32).
+# time-driver must NOT claim TIM2 (GNSS PPS input capture) or TIM3 (buzzer PWM).
+embassy-stm32 = { version = "0.6", features = [
+    "stm32u083kc",
+    "memory-x",
+    # TIM15: keeps TIM2 free (GNSS PPS capture) and TIM3 free (buzzer PWM).
+    # Move to time-driver-lptim1 (LSE) when Stop-mode work lands.
+    "time-driver-tim15",
+    "exti",
+    "defmt",
+    "time",
+] }
+embassy-executor = { version = "0.10", features = [
+    "platform-cortex-m",
+    "executor-thread",
+    "defmt",
+] }
+embassy-time = { version = "0.5", features = ["defmt", "tick-hz-32_768"] }
+embassy-sync = { version = "0.7", features = ["defmt"] }
+embassy-futures = "0.1"
+
+cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+
+heapless = "0.8"
+
+[profile.release]
+debug = 2          # keep symbols for defmt/probe-rs; not flashed
+lto = "fat"
+opt-level = "s"    # Cortex-M0+, 256K flash — size first
+codegen-units = 1
+
+[profile.dev]
+debug = 2
+lto = "thin"
+opt-level = "s"    # -O0 blows the M0+ code size and is uselessly slow
