@@ -156,6 +156,14 @@ The generator's *display* is itself policy-configurable per key:
   silent duress telemetry. Under coercion, "show me another code" hands the
   attacker a tripwire.
 
+  **Indistinguishability is a hard requirement:** the decoy stream renders
+  through the *identical* display pipeline as real codes — same digit count,
+  same scatter-reveal order/dwell, same reveal duration, same "next code in
+  N s" countdown, same refusal windows. Real and decoy reveals share one
+  code path parameterized only by which key they mint from; any observable
+  difference (timing, animation, brightness, buzzer) is a side channel that
+  defeats poison mode.
+
 Generator-side display/reveal state is RAM-only and per-key, mirroring the
 lock's slot config so the countdown UX ("next code in 90 s") matches what
 the lock will actually accept.
