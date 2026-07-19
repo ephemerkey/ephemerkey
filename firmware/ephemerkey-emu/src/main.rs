@@ -15,6 +15,9 @@
 //!   lock enter <code|@N>    type a code at the lock (@N = Nth revealed
 //!                           code, 1-based — the "written down" notebook)
 //!   lock status             slot states
+//!   validate <@R>           relay the Rth emitted receipt to the remote
+//!                           validator (confirm-TOTP verification)
+//!   env ...                 drive the virtual GNSS/accel/RTC (see cmd_env)
 //!   expect <substring>      assert the last event line contains this
 //!   echo <text> | # ...     narration / comments
 //!   quit
@@ -23,6 +26,7 @@ use ephemerkey_core::engine::{KeyDef, LockEngine, Outcome};
 use ephemerkey_core::policy::{
     Action, Gates, NegativeAction, Policy, Sensors, Slot, MAX_PATH_LEGS, MAX_QUORUM,
 };
+use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Receipts, Validator};
 use ephemerkey_core::reveal::{DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
 use serde::Deserialize;
 use std::io::BufRead;
@@ -37,9 +41,40 @@ struct Scenario {
     seed: u32,
     keys: Vec<KeyCfg>,
     slots: Vec<SlotCfg>,
+    /// The lock's own confirm-TOTP identity (receipts it mints on every
+    /// fire/relock). Absent = the lock stays silent.
+    confirm: Option<ConfirmCfg>,
 }
 fn default_start() -> u64 {
     1_750_000_000
+}
+
+#[derive(Deserialize)]
+struct ConfirmCfg {
+    secret: String,
+    #[serde(default = "default_digits")]
+    digits: u8,
+    /// "sequence" | "time" | "both"
+    #[serde(default)]
+    mode: ReceiptModeCfg,
+}
+
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum ReceiptModeCfg {
+    #[default]
+    Sequence,
+    Time,
+    Both,
+}
+impl From<ReceiptModeCfg> for ReceiptMode {
+    fn from(m: ReceiptModeCfg) -> Self {
+        match m {
+            ReceiptModeCfg::Sequence => ReceiptMode::Sequence,
+            ReceiptModeCfg::Time => ReceiptMode::Time,
+            ReceiptModeCfg::Both => ReceiptMode::Both,
+        }
+    }
 }
 fn default_seed() -> u32 {
     0x5EED_C0DE
@@ -168,7 +203,7 @@ fn default_delay_max() -> u16 {
     60
 }
 
-fn build(scn: &Scenario) -> (Generator, LockEngine) {
+fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
     let mut lock = LockEngine::new();
     let mut gen = Generator::new();
 
@@ -278,7 +313,16 @@ fn build(scn: &Scenario) -> (Generator, LockEngine) {
             negative,
         });
     }
-    (gen, lock)
+
+    // The lock's confirm identity: the engine mints, a matching validator
+    // (a remote party holding the same secret) verifies what gets relayed.
+    let validator = scn.confirm.as_ref().map(|c| {
+        let mode: ReceiptMode = c.mode.into();
+        lock.receipts = Some(Receipts::new(c.secret.as_bytes(), c.digits, mode));
+        Validator::new(c.secret.as_bytes(), c.digits, mode)
+    });
+
+    (gen, lock, validator)
 }
 
 // ------------------------------------------------------------------- env
@@ -317,10 +361,14 @@ struct Emu {
     gen: Generator,
     lock: LockEngine,
     env: Env,
+    /// A remote party holding the lock's confirm secret (None = silent lock).
+    validator: Option<Validator>,
     last_event: String,
     failures: u32,
     /// Every code the generator has shown, in order — the user's notebook.
     notebook: Vec<String>,
+    /// Every receipt the lock has emitted, in order — relay with `validate @R`.
+    receipts: Vec<Receipt>,
 }
 
 impl Emu {
@@ -366,11 +414,14 @@ impl Emu {
                 let out = self.lock.enter_code_with(&code, self.now, &self.env);
                 let s = describe(out);
                 self.event(format!("lock: {s}"));
-                // Relock consequences print (and become expectable) after
-                // the outcome that caused them.
+                // Relock + receipt consequences print (and become expectable)
+                // after the outcome that caused them.
                 self.drain_relocks();
+                self.drain_receipts();
             }
             ["lock", "status"] => self.cmd_status(),
+
+            ["validate", r] => self.cmd_validate(r),
 
             ["expect", rest @ ..] => {
                 let want = rest.join(" ");
@@ -395,6 +446,46 @@ impl Emu {
         }
     }
 
+    /// Surface any confirm-TOTP receipts the lock minted, and file them in
+    /// the receipt book so `validate @R` can relay them to the validator.
+    fn drain_receipts(&mut self) {
+        while let Some(r) = self.lock.take_receipt() {
+            self.receipts.push(r);
+            let n = self.receipts.len();
+            let mut buf = [0u8; 10];
+            let seq_code = r
+                .seq_code
+                .map(|c| format!(" seq_code={}", c.render(&mut buf)))
+                .unwrap_or_default();
+            let mut buf2 = [0u8; 10];
+            let time_code = r
+                .time_code
+                .map(|c| format!(" time_code={}", c.render(&mut buf2)))
+                .unwrap_or_default();
+            self.event(format!(
+                "lock: RECEIPT @{n} action={:?} seq={}{seq_code}{time_code}",
+                r.action, r.seq
+            ));
+        }
+    }
+
+    /// Relay a receipt from the book (`@R`, 1-based) to the remote validator.
+    fn cmd_validate(&mut self, arg: &str) {
+        let idx: Option<usize> = arg.strip_prefix('@').unwrap_or(arg).parse().ok();
+        let Some(i) = idx else {
+            return self.event(format!("validate: bad receipt ref {arg}"));
+        };
+        let Some(r) = self.receipts.get(i.wrapping_sub(1)).copied() else {
+            return self.event(format!("validate: no receipt @{i}"));
+        };
+        let now_s = self.now as u32;
+        let Some(v) = self.validator.as_mut() else {
+            return self.event("validate: no validator (scenario has no confirm secret)".into());
+        };
+        let check = v.verify(&r, now_s);
+        self.event(format!("validator: {} (receipt @{i})", describe_check(check)));
+    }
+
     fn cmd_time(&mut self, words: &[&str]) {
         match words {
             ["time", "set", v] => {
@@ -414,6 +505,7 @@ impl Emu {
                 self.lock.tick(self.now);
                 println!("[t={}] +{}s", self.now, d * mul);
                 self.drain_relocks();
+                self.drain_receipts();
             }
             _ => println!("? time +<n>[s|m|h] | time set <unix>"),
         }
@@ -536,6 +628,19 @@ fn describe(o: Outcome) -> String {
     }
 }
 
+fn describe_check(c: ReceiptCheck) -> String {
+    match c {
+        ReceiptCheck::Valid { skipped, drift_s } => {
+            format!("VALID (skipped={skipped} drift={drift_s}s)")
+        }
+        ReceiptCheck::BadCode => "BADCODE (forged / wrong key / relabeled)".into(),
+        ReceiptCheck::Replay => "REPLAY (seq already consumed)".into(),
+        ReceiptCheck::TooFarAhead => "DESYNC (seq beyond look-ahead)".into(),
+        ReceiptCheck::OutOfWindow => "OUTOFWINDOW (time drift too large)".into(),
+        ReceiptCheck::ModeMismatch => "MODEMISMATCH (wrong proof kind relayed)".into(),
+    }
+}
+
 fn main() {
     let arg = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("usage: ekemu <scenario.json>  (commands on stdin)");
@@ -544,16 +649,18 @@ fn main() {
     let scn: Scenario =
         serde_json::from_str(&std::fs::read_to_string(&arg).expect("read scenario"))
             .expect("parse scenario");
-    let (gen, lock) = build(&scn);
+    let (gen, lock, validator) = build(&scn);
     let mut emu = Emu {
         now: scn.start_time,
         seed: scn.seed,
         gen,
         lock,
         env: Env::default(),
+        validator,
         last_event: String::new(),
         failures: 0,
         notebook: Vec::new(),
+        receipts: Vec::new(),
     };
     println!("ekemu: scenario {arg}, t={}", emu.now);
 

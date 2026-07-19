@@ -20,3 +20,4 @@ demo:
 	cargo run -q -- scenarios/deadman.json < scripts/deadman.txt
 	cargo run -q -- scenarios/quorum.json < scripts/quorum.txt
 	cargo run -q -- scenarios/portable-vault.json < scripts/portable-vault.txt
+	cargo run -q -- scenarios/receipts.json < scripts/receipts.txt

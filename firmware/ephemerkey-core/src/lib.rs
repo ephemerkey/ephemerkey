@@ -8,10 +8,13 @@
 //!                replay burn, decoy (negative) matching, slot dispatch
 //! - [`reveal`] — generator-side display scheduler: scatter reveal,
 //!                show-once refusal windows, decoy (poison) minting
+//! - [`receipt`] — confirm-TOTP: the lock's own HOTP/TOTP event receipts and
+//!                the remote validator that verifies them
 
 #![cfg_attr(not(test), no_std)]
 
 pub mod engine;
 pub mod policy;
+pub mod receipt;
 pub mod reveal;
 pub mod totp;

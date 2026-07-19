@@ -83,5 +83,9 @@ Requires `rustup` (pulls the pinned toolchain + target via
 - [x] Policy-engine gate model: `Sensors` trait + fence/stillness/calendar
       gates in `ephemerkey-core` (emulator-proven); firmware still needs the
       real `Sensors` impl over GNSS-fix / LIS3DH-activity / RTC
-- [ ] Confirm-TOTP (HOTP receipt) minted on fire, for the validator/WiFi path
+- [x] Confirm-TOTP receipts in `ephemerkey-core`: HOTP (event-sequence) and
+      TOTP (event-time) proofs, independently selectable or both, minted on
+      every fire/relock, with a remote `Validator` (emulator-proven). Firmware
+      still needs to persist the monotonic event counter (flash journal) and
+      wire the relay to OLED/USB/WiFi.
 - [ ] ESP32-C3 protocol: OTA staging, config file transport

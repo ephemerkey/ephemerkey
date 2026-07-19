@@ -213,22 +213,42 @@ the lock will actually accept.
 
 ## Confirm-TOTP (the lock talks back)
 
-On completing an action (unlock, lock, duress, tamper) the lock generates its
-**own** TOTP from a per-lock confirm secret, bound to the event:
+On completing an action (unlock, lock, duress, tamper, relock) the lock mints
+its **own** code from a per-lock confirm secret, bound to the event. Two
+orthogonal proofs, independently selectable per lock (`ReceiptMode` =
+`sequence` | `time` | `both`) — because *when* and *which-event-in-order* are
+different questions and both matter:
 
 ```
-confirm = TOTP(K_confirm, t)  displayed alongside an event tag
-        (or: HOTP-style over event counter ‖ action, shown as code+seq)
+sequence = HOTP(K_confirm, kind‖action‖event_counter)   -- order / skip / replay
+time     = TOTP(K_confirm, kind‖action‖t)               -- "it happened at HH:MM"
 ```
 
+- The **sequence** proof is an event receipt over a monotonic counter: it
+  never collides on two events in one TOTP period, and a validator tracks the
+  expected next counter (RFC 4226 §7.4 resync + look-ahead) to catch replays,
+  skips, and re-ordering. The counter must be flash-persisted — resetting it
+  on power-cycle would replay.
+- The **time** proof is a TOTP the validator searches within a drift window,
+  recovering "minted ~N seconds ago".
+- **both** emits the two codes; a validator can require the pair to agree
+  (fresh AND in order) and does not advance its sequence cursor unless the
+  time proof also passes.
+- A domain tag (`kind`) and the `action` fold into the HMAC message, so a
+  sequence code can't be passed off as a time code and an "unlock" receipt
+  can't be relabeled as a "lock".
 - Displayed on the OLED / read over USB, for the user to relay to a
   **validator** (a CLI/web tool holding `K_confirm` — or another ephemerkey
-  provisioned as validator).
-- Or reported autonomously over WiFi when the ESP rail is up.
+  provisioned as validator). Or reported autonomously over WiFi.
 
 This closes the loop for remote parties: "the vault really did lock at
 14:02" is a 6-digit code someone can text you, and receipt chaining (#10)
 turns it into a required input for the next cycle.
+
+**Implemented** in `ephemerkey-core::receipt` (minter + validator, both
+modes), minted by the engine on every fire and relock, emulator-proven
+(`ekemu` `receipts` scenario). Remaining firmware work: persist the event
+counter in the flash journal and wire the relay to OLED/USB/WiFi.
 
 ## Reset semantics (summary table)
 
@@ -251,9 +271,9 @@ turns it into a required input for the next cycle.
   decide when the controller personality gets its first real deployment.
 - Slot count / config-file size budget (flash journal page = 2 KB, so ~a
   dozen slots with zone tables fits comfortably).
-- Whether confirm-TOTP should be HOTP (event counter) rather than TOTP —
-  leaning HOTP: it's an event receipt, not a time proof, and it never
-  collides on two events in one period.
+- ~~Whether confirm-TOTP should be HOTP (event counter) rather than TOTP~~
+  **Resolved:** both, independently selectable (`ReceiptMode`) — time and
+  sequence answer different questions and a lock may want either or both.
 
 **Resolved since first draft:** the provisioning encoding, key model (owner
 Ed25519 / device Ed25519+X25519, "set"-bound), transports, and the web UI

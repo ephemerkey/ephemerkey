@@ -1,0 +1,52 @@
+# Confirm-TOTP: the lock talks back. This lock mints receipts in "both" mode,
+# so every unlock/relock emits a SEQUENCE proof (HOTP over an event counter --
+# order/replay) AND a TIME proof (TOTP over the event time -- "it happened at
+# HH:MM"). A remote validator holding the same confirm secret verifies both.
+#
+# Two separate books: `lock enter @N` pulls the Nth generated CODE; `validate
+# @R` relays the Rth emitted RECEIPT.
+
+echo == unlock: the fire mints receipt 0 (seq + time codes) ==
+gen reveal
+lock enter @1
+# the RECEIPT (action=Unlock) is the fire's consequence, drained right after
+expect RECEIPT @1 action=Unlock seq=0
+
+echo == a remote party verifies it: genuine, in order, fresh ==
+validate @1
+expect validator: VALID (skipped=0
+
+echo == relaying the same receipt again is caught as a replay ==
+validate @1
+expect validator: REPLAY
+
+echo == keep-alive beat mints NO receipt (nothing latched or relocked) ==
+time +90
+gen reveal
+lock enter @2
+expect BEAT slot=0
+
+echo == miss the beat: the relock mints receipt 1, action Lock ==
+time +130
+expect RECEIPT @2 action=Lock seq=1
+validate @2
+expect validator: VALID (skipped=0
+
+echo == re-arm and unlock again: receipt 2 (seq 2) -- left UNVALIDATED ==
+gen reveal
+lock enter @3
+expect RECEIPT @3 action=Unlock seq=2
+
+echo == two hours pass; the stale relock mints receipt 3 (seq 3) ==
+time +7200
+expect RECEIPT @4 action=Lock seq=3
+
+echo == receipt 2, relayed 2h late: sequence still fits but TIME expired ==
+validate @3
+expect validator: OUTOFWINDOW
+
+echo == receipt 3 is fresh: verifies, and reports the skipped seq 2 ==
+validate @4
+expect validator: VALID (skipped=1
+
+quit

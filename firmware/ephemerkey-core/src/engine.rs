@@ -17,9 +17,22 @@ use crate::policy::{
     Action, AllGatesOpen, GateBlock, NegativeAction, Policy, Sensors, Slot, SlotState, Verdict,
     MAX_KEYS, MAX_QUORUM, MAX_SLOTS,
 };
+use crate::receipt::{Receipt, Receipts};
 use crate::totp::{hotp, Code, PERIOD_S};
 
 pub const MAX_SECRET: usize = 32;
+
+/// Receipts pending pickup between a caller's drain calls: at most one fire
+/// per `enter_code`, plus up to `MAX_SLOTS` relocks per `tick`.
+const MAX_RECEIPTS: usize = MAX_SLOTS + 1;
+
+/// The re-lock event's action is the opposite of the slot's fire action.
+fn relock_action(fire: Action) -> Action {
+    match fire {
+        Action::Lock => Action::Unlock,
+        Action::Unlock | Action::DuressUnlock => Action::Lock,
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct KeyDef {
@@ -83,6 +96,13 @@ pub struct LockEngine {
     lockout_until: [u32; MAX_SLOTS],
     /// Bit i set: slot i's DeadMan sustain expired — caller must re-lock.
     pending_relock: u8,
+    /// Optional confirm-TOTP minter — the lock's own event receipts. When
+    /// set, every fire and re-lock mints a [`Receipt`] into `pending_receipt`.
+    pub receipts: Option<Receipts>,
+    /// Receipts awaiting pickup, drained FIFO by [`take_receipt`].
+    ///
+    /// [`take_receipt`]: LockEngine::take_receipt
+    pending_receipt: [Option<Receipt>; MAX_RECEIPTS],
 }
 
 impl Default for LockEngine {
@@ -100,7 +120,35 @@ impl LockEngine {
             burned: [0; MAX_SLOTS],
             lockout_until: [0; MAX_SLOTS],
             pending_relock: 0,
+            receipts: None,
+            pending_receipt: [None; MAX_RECEIPTS],
         }
+    }
+
+    /// Mint an event receipt if a confirm minter is configured, queueing it
+    /// for [`take_receipt`](Self::take_receipt). No-op otherwise.
+    fn mint_receipt(&mut self, action: Action, now_s: u32) {
+        if let Some(r) = self.receipts.as_mut().map(|rc| rc.mint(action, now_s)) {
+            for slot in self.pending_receipt.iter_mut() {
+                if slot.is_none() {
+                    *slot = Some(r);
+                    return;
+                }
+            }
+            debug_assert!(false, "receipt buffer overflow — caller not draining");
+        }
+    }
+
+    /// Pop the next pending event receipt (FIFO), or `None`. The caller
+    /// relays it to a validator / logs it / sends it over WiFi. Drain after
+    /// every `enter_code` and `tick`.
+    pub fn take_receipt(&mut self) -> Option<Receipt> {
+        for slot in self.pending_receipt.iter_mut() {
+            if slot.is_some() {
+                return slot.take();
+            }
+        }
+        None
     }
 
     /// Candidate (key-table index, kidx) pairs an entered code may match
@@ -160,6 +208,7 @@ impl LockEngine {
             if let Some(slot) = self.slots[i] {
                 if self.state[i].tick(&slot, now_s) {
                     self.pending_relock |= 1 << i;
+                    self.mint_receipt(relock_action(slot.action), now_s);
                 }
             }
         }
@@ -175,11 +224,12 @@ impl LockEngine {
     }
 
     /// Forced reset (invalid code / decoy): a sustained DeadMan slot that
-    /// gets reset here still owes the world a re-lock event.
-    fn reset_slot(&mut self, i: usize) {
+    /// gets reset here still owes the world a re-lock event — and its receipt.
+    fn reset_slot(&mut self, i: usize, now_s: u32) {
         if let Some(slot) = self.slots[i] {
             if matches!(slot.policy, Policy::DeadMan { .. }) && self.state[i].sustained {
                 self.pending_relock |= 1 << i;
+                self.mint_receipt(relock_action(slot.action), now_s);
             }
         }
         self.state[i].reset();
@@ -235,7 +285,10 @@ impl LockEngine {
                     self.burned[i] = counter;
                     return match self.state[i].on_code(&slot, kidx, counter, now_s) {
                         Verdict::Progress(h, n) => Outcome::Progress(i as u8, h, n),
-                        Verdict::Fire(a) => Outcome::Fired(i as u8, a),
+                        Verdict::Fire(a) => {
+                            self.mint_receipt(a, now_s);
+                            Outcome::Fired(i as u8, a)
+                        }
                         Verdict::Beat => Outcome::Beat(i as u8),
                         Verdict::Reset => Outcome::Reset(i as u8),
                         Verdict::Ignored => Outcome::Replay(i as u8),
@@ -249,9 +302,9 @@ impl LockEngine {
                     if let Some(code) = Code::parse(entered, dk.digits) {
                         if Self::match_key(&dk, code, now, delay).is_some() {
                             match slot.negative {
-                                NegativeAction::Reset => self.reset_slot(i),
+                                NegativeAction::Reset => self.reset_slot(i, now_s),
                                 NegativeAction::Lockout(s) => {
-                                    self.reset_slot(i);
+                                    self.reset_slot(i, now_s);
                                     self.lockout_until[i] = now_s + u32::from(s);
                                 }
                                 NegativeAction::Silent => {}
@@ -267,7 +320,7 @@ impl LockEngine {
         for i in 0..MAX_SLOTS {
             if let Some(slot) = self.slots[i] {
                 if slot.reset_on_invalid {
-                    self.reset_slot(i);
+                    self.reset_slot(i, now_s);
                 }
             }
         }
@@ -707,6 +760,43 @@ mod tests {
             e.enter_code_with(&code_at(SECRET, t0), t0, &env),
             Outcome::Gated(0, GateBlock::Fence)
         );
+    }
+
+    #[test]
+    fn fire_and_relock_mint_verifiable_receipts() {
+        use crate::receipt::{ReceiptCheck, ReceiptMode, Receipts, Validator};
+        const CONFIRM: &[u8] = b"lock-confirm-secret00";
+
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(SECRET, 6));
+        e.slots[0] = Some(slot_with(Policy::DeadMan { beat_s: 120 }));
+        e.receipts = Some(Receipts::new(CONFIRM, 6, ReceiptMode::Both));
+        let mut v = Validator::new(CONFIRM, 6, ReceiptMode::Both);
+
+        let t0 = 1_750_000_000u64;
+        // Unlock fires -> receipt seq 0, action Unlock.
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0), t0),
+            Outcome::Fired(0, Action::Unlock)
+        );
+        let r0 = e.take_receipt().expect("fire minted a receipt");
+        assert_eq!(r0.action, Action::Unlock);
+        assert_eq!(r0.seq, 0);
+        assert!(matches!(
+            v.verify(&r0, t0 as u32 + 5),
+            ReceiptCheck::Valid { .. }
+        ));
+        assert!(e.take_receipt().is_none()); // only one
+
+        // Miss the beat -> relock mints seq 1, action Lock (the opposite).
+        e.tick(t0 + 200);
+        let r1 = e.take_receipt().expect("relock minted a receipt");
+        assert_eq!(r1.action, Action::Lock);
+        assert_eq!(r1.seq, 1);
+        assert!(matches!(
+            v.verify(&r1, t0 as u32 + 205),
+            ReceiptCheck::Valid { .. }
+        ));
     }
 
     #[test]

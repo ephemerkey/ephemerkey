@@ -1,0 +1,19 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    { "secret": "unlock-key-0000000000", "digits": 6, "display": { "mode": "plain" } }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "policy": { "type": "deadman", "beat_s": 120 },
+      "progress": true
+    }
+  ],
+  "confirm": {
+    "secret": "lock-confirm-secret000",
+    "digits": 6,
+    "mode": "both"
+  }
+}

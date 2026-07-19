@@ -28,9 +28,22 @@ gen next [key]        countdown to the next REAL reveal (show-once modes)
 lock enter <code|@N>  type a code; @N = Nth revealed code (the "notebook"
                       the user wrote codes into before walking)
 lock status           slot states (respects show_progress hiding)
+validate <@R>         relay the Rth emitted receipt to the remote validator
 expect <substring>    assert on the last event line; any miss => exit 1
 echo / # / quit
 ```
+
+## Confirm-TOTP (the lock talks back)
+
+If a scenario has a `confirm` block (`{ "secret", "digits", "mode":
+sequence|time|both }`), the lock mints its own **receipt** on every fire and
+relock — a `RECEIPT @R` line carrying a **sequence** code (HOTP over a
+monotonic event counter: order/replay proof), a **time** code (TOTP over the
+event time: "it happened at HH:MM"), or both. `validate @R` relays a receipt
+to a remote validator holding the same secret, which reports `VALID
+(skipped/drift)`, `REPLAY`, `OUTOFWINDOW`, `DESYNC`, or `BADCODE`. Time proves
+*when*; sequence proves *which event, in order* — a lock can require either or
+both.
 
 Each slot may carry **gates** (`{ "fence": i, "stillness_s": n, "calendar":
 i }`) that must all hold — evaluated against the `env` above — before a code
@@ -58,6 +71,7 @@ distinct keys, optional alternating).
 | `deadman` | unlock, keep-alive beats, missed-beat RELOCK, and the forced-reset-still-relocks invariant |
 | `quorum` | two-person rule: alternating violation, completion, window expiry |
 | `portable-vault` | position + stillness + calendar gates peel off one at a time; the never-burned code fires only when all three hold, then re-gates on leaving the fence |
+| `receipts` | confirm-TOTP in `both` mode: fires and relocks mint sequence+time receipts; a validator catches replay, resync-skip, and time-window expiry |
 
 ## What the demo script proves
 
