@@ -795,7 +795,7 @@ fn describe(o: Outcome) -> String {
         Outcome::Negative(s, n) => format!("NEGATIVE slot={s} {n:?} (decoy tripwire)"),
         Outcome::LockedOut(s) => format!("LOCKEDOUT slot={s}"),
         Outcome::Gated(s, b) => format!("GATED slot={s} {b:?} (not burned)"),
-        Outcome::Invalid => "INVALID (armed slots reset)".into(),
+        Outcome::Invalid => "INVALID (matched no ritual; reset_on_invalid rituals wiped)".into(),
         Outcome::Armed(s, at) => format!("ARMED slot={s} fires at t={at} unless vetoed"),
         Outcome::Vetoed(s) => format!("VETOED slot={s} (pending action canceled)"),
         Outcome::Exhausted(s) => format!("EXHAUSTED slot={s} (usage budget spent)"),
