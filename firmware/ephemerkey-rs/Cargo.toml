@@ -6,11 +6,14 @@ license = "Apache-2.0"
 description = "ephemerkey STM32U083 firmware — GPS-geofenced TOTP generator (Embassy async)"
 
 [dependencies]
-# Embassy async HAL + executor. Chip feature = STM32U083KCU6 (UFQFPN-32).
+# Embassy async HAL + executor. The chip feature is supplied by the selected
+# board feature (see [features]) — `stm32u083kc` for the ephemerkey board
+# (UFQFPN-32), `stm32u083rc` for the NUCLEO-U083RC (LQFP-64). Both are the same
+# STM32U0x3 die, so all the provisioning/store/USB code is board-independent.
+# NOTE: memory-x is intentionally NOT used — build.rs supplies our own
+# memory.x that carves the top 3 flash pages out of FLASH for the store journal.
 # time-driver must NOT claim TIM2 (GNSS PPS input capture) or TIM3 (buzzer PWM).
 embassy-stm32 = { version = "0.6", features = [
-    "stm32u083kc",
-    "memory-x",
     # TIM15: keeps TIM2 free (GNSS PPS capture) and TIM3 free (buzzer PWM).
     # Move to time-driver-lptim1 (LSE) when Stop-mode work lands.
     "time-driver-tim15",
@@ -43,6 +46,44 @@ ephemerkey-core = { path = "../ephemerkey-core" }
 # the emulator (`ekemu serial`) and host-tested there and in ekctl e2e.
 ephemerkey-provision = { path = "../ephemerkey-provision" }
 ephemerkey-envelope = { path = "../ephemerkey-envelope" }
+ephemerkey-frame = { path = "../ephemerkey-frame" }
+# Persistent flash journal (identity page + ping-pong config record), host-tested.
+ephemerkey-store = { path = "../ephemerkey-store" }
+
+# USB CDC-ACM transport for the provisioning console (feature `usb-provision`).
+embassy-usb = { version = "0.6", default-features = false, features = ["defmt"], optional = true }
+
+[features]
+# Exactly one board must be selected; it pulls in the embassy chip feature and
+# selects the pin map in `board.rs`. `board-ephemerkey` is the product board and
+# enables all on-board hardware; `board-nucleo-u083` is the bare Nucleo, so the
+# GNSS/WiFi/lock/sensor/buzzer subsystems are off by default (feature-gate them
+# on only for whatever you've wired to the Nucleo).
+default = ["board-ephemerkey"]
+board-ephemerkey = [
+    "embassy-stm32/stm32u083kc",
+    "gnss",
+    "wifi",
+    "lock",
+    "sensors",
+    "buzzer",
+    "usb-provision",
+]
+board-nucleo-u083 = [
+    "embassy-stm32/stm32u083rc",
+    "usb-provision",
+]
+
+# Optional hardware subsystems — each gates a `main.rs` task and its module so a
+# board without that peripheral attached compiles (and links) without it.
+gnss = []
+wifi = []
+lock = []
+sensors = []
+buzzer = []
+
+# Provisioning transport over USB FS CDC-ACM (button-gated).
+usb-provision = ["dep:embassy-usb"]
 
 [profile.release]
 debug = 2          # keep symbols for defmt/probe-rs; not flashed

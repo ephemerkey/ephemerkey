@@ -1,0 +1,10 @@
+[package]
+name = "ephemerkey-store"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey persistent store: internal-flash journal (identity page + 2-slot ping-pong config record with atomic commit + CRC) behind a portable Flash trait — no_std, host-tested with a RAM fake-flash"
+
+[dependencies]
+
+[dev-dependencies]

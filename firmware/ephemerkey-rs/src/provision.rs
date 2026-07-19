@@ -1,109 +1,119 @@
-//! Provisioning: sealed config envelopes delivered over USB or WiFi.
+//! Provisioning platform glue: the flash-journal-backed [`Store`], the
+//! persisted device identity, and the engine constructor. The protocol/crypto
+//! itself lives in the shared `ephemerkey-provision` crate (the emulator's
+//! `ekemu serial` is its behavioral twin); this module owns only the pieces
+//! that touch real silicon:
 //!
-//! The protocol/crypto engine lives in the shared `ephemerkey-provision`
-//! crate (framed link per ephemerkey-control docs/serial-protocol.md;
-//! `COSE_Encrypt0(COSE_Sign1(config, owner), device_kx)` envelopes; owner
-//! TOFU via the inner Sign1 kid; signed acks/events; wifi handoff). The
-//! emulator's `ekemu serial` runs the same engine semantics and is the
-//! behavioral reference; this module owns only the platform pieces:
+//!   - **[`FlashStore`]** — owner binding, config `seq`, verified config, and
+//!     WiFi creds persisted in the internal-flash journal via `ephemerkey-store`
+//!     (identity page + 2-slot ping-pong record; a torn write can lose the new
+//!     config but never the owner binding).
+//!   - **Identity** — device_id + Ed25519/X25519 secrets, minted from the TRNG
+//!     on first boot and persisted; loaded verbatim thereafter.
 //!
-//!   - **Transport**: USB FS CDC on PA11/PA12, button-gated ("provisioning
-//!     mode" — never silently writable). The USB task pumps raw bytes into
-//!     `Provisioner::feed` and writes the response frames back. The WiFi
-//!     path (ESP32-C3 over LPUART1) pumps the exact same engine.
-//!   - **Identity**: device_id + Ed25519/X25519 secrets, minted from the
-//!     TRNG on first boot and persisted; never leave the device.
-//!   - **[`FlashStore`]**: owner binding, config seq, and the verified
-//!     config payload in the internal-flash journal (DESIGN.md §Storage).
-//!
-//! Status: engine wired, transports and flash journal still TODO — `feed`
-//! is reachable from tests/emulator today, from hardware once the USB task
-//! lands.
+//! The transport (USB FS CDC, button-gated) is `crate::usbprov`.
 
-#![allow(dead_code)]
+use embassy_stm32::flash::{Blocking, Flash};
+use ephemerkey_envelope::SigningKey;
+use ephemerkey_provision::{Identity, Provisioner, Store};
+use ephemerkey_store::{
+    Error as StoreError, Flash as StoreFlash, Journal, Layout, StoredIdentity, PAGE,
+};
 
-use ephemerkey_provision::{Identity, Provisioner, Store, CONFIG_MAX};
+/// Adapts embassy's blocking `Flash` to the store's [`StoreFlash`] trait.
+/// Offsets are bank-relative, exactly what `blocking_*` expect.
+pub struct EmbassyFlash(pub Flash<'static, Blocking>);
 
-/// Flash-journal-backed store. TODO: back with the config journal pages
-/// (append-counter region + wear budget per DESIGN.md); this in-RAM version
-/// gives the engine correct semantics until then — but loses state on
-/// power-down, so hardware provisioning stays gated off until the journal
-/// lands (a lost owner binding would re-open TOFU).
+impl StoreFlash for EmbassyFlash {
+    fn read(&mut self, off: u32, buf: &mut [u8]) -> Result<(), StoreError> {
+        self.0.blocking_read(off, buf).map_err(|_| StoreError::Flash)
+    }
+    fn erase_page(&mut self, off: u32) -> Result<(), StoreError> {
+        self.0
+            .blocking_erase(off, off + PAGE as u32)
+            .map_err(|_| StoreError::Flash)
+    }
+    fn write(&mut self, off: u32, data: &[u8]) -> Result<(), StoreError> {
+        self.0.blocking_write(off, data).map_err(|_| StoreError::Flash)
+    }
+}
+
+pub type DeviceJournal = Journal<EmbassyFlash>;
+
+/// Mount the flash journal and resolve the device identity. On a factory-fresh
+/// device (no identity page) this mints one from `fill` — which must write 76
+/// bytes of TRNG output (12 device_id ‖ 32 Ed25519 seed ‖ 32 X25519 secret) —
+/// and persists it before returning. Panics only on a flash fault, which on
+/// this device means the part is unusable for provisioning anyway.
+pub fn mount_and_identity(
+    flash: Flash<'static, Blocking>,
+    fill: impl FnOnce(&mut [u8]),
+) -> (DeviceJournal, StoredIdentity) {
+    let mut journal = Journal::mount(EmbassyFlash(flash), Layout::DEFAULT).unwrap();
+    let id = match journal.identity() {
+        Some(id) => id,
+        None => {
+            let mut seed = [0u8; 76];
+            fill(&mut seed);
+            let mut id = StoredIdentity {
+                device_id: [0; 12],
+                sign_seed: [0; 32],
+                kx_priv: [0; 32],
+            };
+            id.device_id.copy_from_slice(&seed[0..12]);
+            id.sign_seed.copy_from_slice(&seed[12..44]);
+            id.kx_priv.copy_from_slice(&seed[44..76]);
+            journal.set_identity(&id).unwrap();
+            id
+        }
+    };
+    (journal, id)
+}
+
+/// The provisioning engine's `Store`, backed by the flash journal.
 pub struct FlashStore {
-    owner: Option<[u8; 32]>,
-    seq: u64,
-    config: [u8; CONFIG_MAX],
-    config_len: usize,
-    wifi_ssid: heapless::String<32>,
-    wifi_psk: heapless::String<64>,
+    journal: DeviceJournal,
 }
 
 impl FlashStore {
-    pub const fn new() -> Self {
-        FlashStore {
-            owner: None,
-            seq: 0,
-            config: [0; CONFIG_MAX],
-            config_len: 0,
-            wifi_ssid: heapless::String::new(),
-            wifi_psk: heapless::String::new(),
-        }
+    pub fn new(journal: DeviceJournal) -> Self {
+        FlashStore { journal }
     }
 }
 
 impl Store for FlashStore {
     fn owner_pub(&self) -> Option<[u8; 32]> {
-        self.owner
+        self.journal.owner_pub()
     }
     fn seq(&self) -> u64 {
-        self.seq
+        self.journal.seq()
     }
     fn commit(&mut self, owner_pub: &[u8; 32], seq: u64, config: &[u8]) -> Result<(), ()> {
-        if config.len() > CONFIG_MAX {
-            return Err(());
-        }
-        // TODO: journal write (owner+seq page, then config pages, then the
-        // commit marker) so a torn write can't lose the owner binding.
-        self.owner = Some(*owner_pub);
-        self.seq = seq;
-        self.config[..config.len()].copy_from_slice(config);
-        self.config_len = config.len();
-        Ok(())
+        self.journal.commit_config(owner_pub, seq, config).map_err(|_| ())
     }
     fn wifi_set(&mut self, ssid: &str, psk: &str) -> Result<(), ()> {
-        self.wifi_ssid = heapless::String::try_from(ssid).map_err(|_| ())?;
-        self.wifi_psk = heapless::String::try_from(psk).map_err(|_| ())?;
-        Ok(())
+        self.journal.wifi_set(ssid, psk).map_err(|_| ())
     }
     fn wifi_clear(&mut self) -> Result<(), ()> {
-        self.wifi_ssid.clear();
-        self.wifi_psk.clear();
-        Ok(())
+        self.journal.wifi_clear().map_err(|_| ())
     }
     fn wifi_ssid(&self) -> Option<&str> {
-        if self.wifi_ssid.is_empty() {
-            None
-        } else {
-            Some(self.wifi_ssid.as_str())
-        }
+        self.journal.wifi_ssid()
     }
     fn now(&self) -> u64 {
-        // TODO: RTC (GNSS-disciplined) once the clock task exposes it.
+        // TODO(clock): GNSS-disciplined RTC. Until the clock task lands, event
+        // timestamps are 0 — the server records receive-time regardless.
         0
     }
 }
 
-pub type DeviceProvisioner = Provisioner<FlashStore>;
-
-/// Build the engine. TODO: load (or mint via TRNG + persist) the real
-/// device identity; `[0; 32]` secrets here are compile-time placeholders and
-/// the USB task must not enumerate until real keys exist.
-pub fn provisioner() -> DeviceProvisioner {
+/// Build the provisioning engine from a persisted identity and flash store.
+pub fn provisioner(id: StoredIdentity, journal: DeviceJournal) -> Provisioner<FlashStore> {
     let identity = Identity {
-        device_id: [0; 12],
-        sign: ephemerkey_envelope::SigningKey::from_bytes(&[0; 32]),
-        kx_priv: [0; 32],
+        device_id: id.device_id,
+        sign: SigningKey::from_bytes(&id.sign_seed),
+        kx_priv: id.kx_priv,
         fw: concat!("ephemerkey-rs-", env!("CARGO_PKG_VERSION")),
     };
-    Provisioner::new(identity, FlashStore::new())
+    Provisioner::new(identity, FlashStore::new(journal))
 }
