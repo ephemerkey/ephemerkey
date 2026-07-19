@@ -49,6 +49,8 @@ ephemerkey-envelope = { path = "../ephemerkey-envelope" }
 ephemerkey-frame = { path = "../ephemerkey-frame" }
 # Persistent flash journal (identity page + ping-pong config record), host-tested.
 ephemerkey-store = { path = "../ephemerkey-store" }
+# NMEA RMC parsing for GNSS RTC discipline (host-tested); only with `gnss`.
+ephemerkey-nmea = { path = "../ephemerkey-nmea", optional = true }
 
 # USB CDC-ACM transport for the provisioning console (feature `usb-provision`).
 embassy-usb = { version = "0.6", default-features = false, features = ["defmt"], optional = true }
@@ -76,7 +78,7 @@ board-nucleo-u083 = [
 
 # Optional hardware subsystems — each gates a `main.rs` task and its module so a
 # board without that peripheral attached compiles (and links) without it.
-gnss = []
+gnss = ["dep:ephemerkey-nmea"]
 wifi = []
 lock = []
 sensors = []

@@ -64,6 +64,19 @@ pub fn discipline_from_unix(secs: u64) {
     });
 }
 
+/// Discipline the clock from a UTC calendar time (e.g. parsed from a GNSS RMC
+/// sentence). Ignores obviously-out-of-range fields.
+pub fn discipline_utc(year: u16, month: u8, day: u8, hour: u8, min: u8, sec: u8) {
+    if !(2000..=2099).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return;
+    }
+    let days = days_from_civil(year as i64, month as i64, day as i64);
+    let secs = days * 86_400 + hour as i64 * 3_600 + min as i64 * 60 + sec as i64;
+    if secs >= 0 {
+        discipline_from_unix(secs as u64);
+    }
+}
+
 /// Current UTC as unix seconds, or `None` if the RTC has never been
 /// disciplined (a cold clock has no trustworthy time).
 pub fn now_unix() -> Option<u64> {

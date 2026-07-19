@@ -758,6 +758,10 @@ name = "ephemerkey-frame"
 version = "0.1.0"
 
 [[package]]
+name = "ephemerkey-nmea"
+version = "0.1.0"
+
+[[package]]
 name = "ephemerkey-provision"
 version = "0.1.0"
 dependencies = [
@@ -785,6 +789,7 @@ dependencies = [
  "ephemerkey-core",
  "ephemerkey-envelope",
  "ephemerkey-frame",
+ "ephemerkey-nmea",
  "ephemerkey-provision",
  "ephemerkey-store",
  "heapless 0.8.0",

@@ -27,6 +27,8 @@ use embassy_stm32::flash::Flash;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::rng::Rng;
 use embassy_stm32::{bind_interrupts, peripherals, rng};
+#[cfg(feature = "usb-provision")]
+use embassy_stm32::usb;
 use embassy_time::Timer;
 
 // Policy engine + TOTP + reveal scheduler live in the shared no_std core,
@@ -53,8 +55,10 @@ mod sensors;
 #[cfg(feature = "wifi")]
 mod wifi;
 
-bind_interrupts!(struct Irqs {
+bind_interrupts!(pub struct Irqs {
     RNG_CRYP => rng::InterruptHandler<peripherals::RNG>;
+    #[cfg(feature = "usb-provision")]
+    USB_DRD_FS => usb::InterruptHandler<peripherals::USB>;
 });
 
 #[embassy_executor::main]
@@ -136,7 +140,10 @@ async fn main(spawner: Spawner) {
     match cfg.role {
         #[cfg(feature = "gnss")]
         config::Role::Generator => {
-            spawner.spawn(gnss::task(p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1).unwrap());
+            spawner.spawn(
+                gnss::task(p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1, p.PA0, p.EXTI0)
+                    .unwrap(),
+            );
         }
         #[cfg(feature = "lock")]
         config::Role::LockController => {
