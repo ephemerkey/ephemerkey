@@ -1,0 +1,18 @@
+[package]
+name = "ephemerkey-envelope"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey config/telemetry envelope: COSE-profile Sign1 + Encrypt0 (Ed25519, X25519+HKDF, AES-128-GCM), no_std, no-alloc"
+
+[dependencies]
+ed25519-dalek = { version = "2", default-features = false }
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes"] }
+hkdf = { version = "0.12", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+rand = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hex = "0.4"
