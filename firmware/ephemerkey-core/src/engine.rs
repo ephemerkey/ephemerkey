@@ -4,11 +4,18 @@
 //! entered code it searches every slot's delay window (the counter range
 //! `[(now-delay_max)/P .. (now-delay_min)/P]`), burns accepted counters
 //! against replay, matches decoy keys as NEGATIVE, and feeds the slot state
-//! machines. Gate evaluation (GNSS/accel/RTC) is the caller's job — a gated
-//! slot is simply passed as `enabled = false` for now.
+//! machines. Gate evaluation (GNSS/accel/RTC) is delegated to a caller-owned
+//! [`Sensors`] environment: [`enter_code_with`] consults each slot's
+//! [`Gates`] before letting a code advance it. A correct code that arrives
+//! while a gate is shut yields [`Outcome::Gated`] and is NOT burned, so it
+//! still works once the gate opens.
+//!
+//! [`enter_code_with`]: LockEngine::enter_code_with
+//! [`Gates`]: crate::policy::Gates
 
 use crate::policy::{
-    Action, NegativeAction, Policy, Slot, SlotState, Verdict, MAX_KEYS, MAX_QUORUM, MAX_SLOTS,
+    Action, AllGatesOpen, GateBlock, NegativeAction, Policy, Sensors, Slot, SlotState, Verdict,
+    MAX_KEYS, MAX_QUORUM, MAX_SLOTS,
 };
 use crate::totp::{hotp, Code, PERIOD_S};
 
@@ -57,6 +64,10 @@ pub enum Outcome {
     Negative(u8, NegativeAction),
     /// Slot is in negative-lockout; code ignored.
     LockedOut(u8),
+    /// A correct code matched this slot but one of its gates is shut
+    /// (position / stillness / calendar). Not burned, no state change — it
+    /// works once the gate opens.
+    Gated(u8, GateBlock),
     /// Matched nothing: `reset_on_invalid` slots were reset.
     Invalid,
 }
@@ -174,14 +185,27 @@ impl LockEngine {
         self.state[i].reset();
     }
 
-    /// Feed one entered code at unix time `now`.
+    /// Feed one entered code at unix time `now`, with every gate open.
+    /// Convenience wrapper over [`enter_code_with`](Self::enter_code_with)
+    /// for callers/tests that don't model position, motion, or time-of-day.
     pub fn enter_code(&mut self, entered: &str, now: u64) -> Outcome {
+        self.enter_code_with(entered, now, &AllGatesOpen)
+    }
+
+    /// Feed one entered code at unix time `now`, evaluating each slot's gates
+    /// against `env`. A code that would advance a slot whose gate is shut
+    /// returns [`Outcome::Gated`] without burning the counter or touching
+    /// slot state — the decoy tripwire, however, stays armed regardless of
+    /// gates (an out-of-fence poison code is still a squeezed-generator
+    /// signal worth catching).
+    pub fn enter_code_with(&mut self, entered: &str, now: u64, env: &impl Sensors) -> Outcome {
         self.tick(now);
         let now_s = now as u32;
 
         for i in 0..MAX_SLOTS {
             let Some(slot) = self.slots[i] else { continue };
             let delay = slot.policy.delay_window();
+            let gate = slot.gates.block(env);
             let (cands, n_cands) = Self::candidates(&slot, &self.state[i]);
 
             for &(ktab, kidx) in &cands[..n_cands] {
@@ -199,6 +223,12 @@ impl LockEngine {
                         return Outcome::LockedOut(i as u8);
                     }
                 } else if let Some(counter) = Self::match_key(&key, code, now, delay) {
+                    // A shut gate stops the code cold: no burn, no advance,
+                    // so it stays valid once the lock is in position / still /
+                    // in-window.
+                    if let Some(reason) = gate {
+                        return Outcome::Gated(i as u8, reason);
+                    }
                     if counter <= self.burned[i] {
                         return Outcome::Replay(i as u8);
                     }
@@ -570,6 +600,133 @@ mod tests {
         assert_eq!(
             e.enter_code(&code_at(SECRET, t1), t1),
             Outcome::Progress(0, 1, 3)
+        );
+    }
+
+    // ------------------------------------------------------------- gates
+
+    use crate::policy::{GateBlock, Sensors};
+
+    /// A fake, script-settable environment for the gate tests.
+    #[derive(Default)]
+    struct FakeEnv {
+        in_fence: bool,
+        still_s: u32,
+        cal_open: bool,
+    }
+    impl Sensors for FakeEnv {
+        fn inside_fence(&self, _: u8) -> bool {
+            self.in_fence
+        }
+        fn still_for_s(&self) -> u32 {
+            self.still_s
+        }
+        fn calendar_open(&self, _: u8) -> bool {
+            self.cal_open
+        }
+    }
+
+    fn gated_master(gates: Gates) -> LockEngine {
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(SECRET, 6));
+        e.slots[0] = Some(Slot {
+            key: 0,
+            policy: Policy::AlwaysValid,
+            gates,
+            action: Action::Unlock,
+            show_progress: true,
+            reset_on_invalid: false,
+            negative: NegativeAction::Reset,
+        });
+        e
+    }
+
+    #[test]
+    fn fence_gate_blocks_then_opens() {
+        let mut e = gated_master(Gates {
+            own_fence: Some(0),
+            ..Gates::default()
+        });
+        let t0 = 1_750_000_000u64;
+        let mut env = FakeEnv {
+            in_fence: false,
+            ..Default::default()
+        };
+        let c = code_at(SECRET, t0);
+        // Out of fence: correct code is gated, not burned.
+        assert_eq!(
+            e.enter_code_with(&c, t0, &env),
+            Outcome::Gated(0, GateBlock::Fence)
+        );
+        // Step inside: the SAME code (never burned) now fires.
+        env.in_fence = true;
+        assert_eq!(
+            e.enter_code_with(&c, t0, &env),
+            Outcome::Fired(0, Action::Unlock)
+        );
+    }
+
+    #[test]
+    fn stillness_gate_reports_stillness() {
+        let mut e = gated_master(Gates {
+            stillness_s: 20,
+            ..Gates::default()
+        });
+        let t0 = 1_750_000_000u64;
+        let c = code_at(SECRET, t0);
+        let moving = FakeEnv {
+            still_s: 5,
+            ..Default::default()
+        };
+        assert_eq!(
+            e.enter_code_with(&c, t0, &moving),
+            Outcome::Gated(0, GateBlock::Stillness)
+        );
+        let settled = FakeEnv {
+            still_s: 25,
+            ..Default::default()
+        };
+        assert_eq!(
+            e.enter_code_with(&c, t0, &settled),
+            Outcome::Fired(0, Action::Unlock)
+        );
+    }
+
+    #[test]
+    fn gates_evaluate_fence_before_calendar() {
+        // With fence + calendar both shut, the reported reason is the fence
+        // (left-to-right evaluation), so the UX message is deterministic.
+        let mut e = gated_master(Gates {
+            own_fence: Some(0),
+            calendar: Some(0),
+            ..Gates::default()
+        });
+        let t0 = 1_750_000_000u64;
+        let env = FakeEnv::default(); // out of fence, calendar closed
+        assert_eq!(
+            e.enter_code_with(&code_at(SECRET, t0), t0, &env),
+            Outcome::Gated(0, GateBlock::Fence)
+        );
+    }
+
+    #[test]
+    fn decoy_tripwire_fires_through_a_shut_gate() {
+        // Out-of-fence is no excuse to ignore a poison code: the tripwire is
+        // always armed even though the real path is gated.
+        let mut e = gated_master(Gates {
+            own_fence: Some(0),
+            ..Gates::default()
+        });
+        // give the master key a decoy twin
+        if let Some(k) = e.keys[0].as_mut() {
+            k.decoy = Some(1);
+        }
+        e.keys[1] = Some(KeyDef::new(DECOY, 6));
+        let t0 = 1_750_000_000u64;
+        let env = FakeEnv::default(); // out of fence
+        assert_eq!(
+            e.enter_code_with(&code_at(DECOY, t0), t0, &env),
+            Outcome::Negative(0, NegativeAction::Reset)
         );
     }
 }

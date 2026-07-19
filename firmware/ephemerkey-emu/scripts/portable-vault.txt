@@ -1,0 +1,38 @@
+# Portable, time-locked vault. The unlock code is only accepted when the
+# lock is (1) inside its home geofence, (2) sitting still, and (3) within an
+# allowed calendar window. Gates peel off one at a time, and a correct code
+# is never consumed while a gate is shut -- the same @1 works every attempt.
+
+echo == the code, minted once, written in the notebook ==
+gen reveal
+expect gen: reveal key=0
+
+# Gates are reported in evaluation order: position, then stillness, then
+# calendar -- so the first shut one is always what the display shows.
+
+echo == out of fence: correct code is GATED on position ==
+lock enter @1
+expect GATED slot=0 Fence
+
+echo == carry it home (fence 0), but still moving ==
+env fence 0 in
+lock enter @1
+expect GATED slot=0 Stillness
+
+echo == set it down (20s still), but outside business hours ==
+env still 25
+lock enter @1
+expect GATED slot=0 Calendar
+
+echo == window opens: the SAME never-burned code finally fires ==
+env cal 0 open
+lock enter @1
+expect FIRED slot=0 action=Unlock
+
+echo == pick it up and leave the fence: it re-gates immediately ==
+env fence 0 out
+env still 0
+lock enter @1
+expect GATED slot=0 Fence
+
+quit

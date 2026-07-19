@@ -21,7 +21,7 @@
 
 use ephemerkey_core::engine::{KeyDef, LockEngine, Outcome};
 use ephemerkey_core::policy::{
-    Action, Gates, NegativeAction, Policy, Slot, MAX_PATH_LEGS, MAX_QUORUM,
+    Action, Gates, NegativeAction, Policy, Sensors, Slot, MAX_PATH_LEGS, MAX_QUORUM,
 };
 use ephemerkey_core::reveal::{DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
 use serde::Deserialize;
@@ -108,6 +108,21 @@ struct SlotCfg {
     /// "reset" | "lockout:<secs>" | "silent"
     #[serde(default = "default_negative")]
     negative: String,
+    #[serde(default)]
+    gates: GatesCfg,
+}
+
+/// Position / motion / calendar gates on a slot. Evaluated against the
+/// emulator's virtual `Env` (driven by `env` REPL commands).
+#[derive(Deserialize, Default)]
+struct GatesCfg {
+    /// fence-table index the lock must be inside (portable locks)
+    fence: Option<u8>,
+    /// seconds of stillness required (0 = no stillness gate)
+    #[serde(default)]
+    stillness_s: u16,
+    /// calendar-window index that must be open
+    calendar: Option<u8>,
 }
 fn default_action() -> String {
     "unlock".into()
@@ -248,7 +263,11 @@ fn build(scn: &Scenario) -> (Generator, LockEngine) {
                     }
                 }
             },
-            gates: Gates::default(),
+            gates: Gates {
+                own_fence: s.gates.fence,
+                stillness_s: s.gates.stillness_s,
+                calendar: s.gates.calendar,
+            },
             action: match s.action.as_str() {
                 "lock" => Action::Lock,
                 "duress" => Action::DuressUnlock,
@@ -262,6 +281,34 @@ fn build(scn: &Scenario) -> (Generator, LockEngine) {
     (gen, lock)
 }
 
+// ------------------------------------------------------------------- env
+
+/// Virtual GNSS / accelerometer / RTC the gates evaluate against. Firmware
+/// implements `Sensors` over real hardware; here the `env` commands drive it.
+/// Defaults are deliberately "shut": out of every fence, moving, every
+/// calendar window closed — so a gated slot genuinely gates until the script
+/// puts the lock where it needs to be.
+#[derive(Default)]
+struct Env {
+    /// bit f set => lock is inside fence f
+    fences: u64,
+    /// seconds the lock has been continuously still
+    still_s: u32,
+    /// bit w set => calendar window w is open
+    calendars: u64,
+}
+impl Sensors for Env {
+    fn inside_fence(&self, fence: u8) -> bool {
+        self.fences & (1 << fence) != 0
+    }
+    fn still_for_s(&self) -> u32 {
+        self.still_s
+    }
+    fn calendar_open(&self, window: u8) -> bool {
+        self.calendars & (1 << window) != 0
+    }
+}
+
 // ------------------------------------------------------------------- emu
 
 struct Emu {
@@ -269,6 +316,7 @@ struct Emu {
     seed: u32,
     gen: Generator,
     lock: LockEngine,
+    env: Env,
     last_event: String,
     failures: u32,
     /// Every code the generator has shown, in order — the user's notebook.
@@ -295,6 +343,7 @@ impl Emu {
             ["echo", rest @ ..] => println!("{}", rest.join(" ")),
 
             ["time", ..] => self.cmd_time(&words),
+            ["env", ..] => self.cmd_env(&words),
 
             ["gen", "reveal"] => self.cmd_reveal(0),
             ["gen", "reveal", k] => self.cmd_reveal(k.parse().unwrap_or(0)),
@@ -314,7 +363,7 @@ impl Emu {
                 } else {
                     (*code).to_string()
                 };
-                let out = self.lock.enter_code(&code, self.now);
+                let out = self.lock.enter_code_with(&code, self.now, &self.env);
                 let s = describe(out);
                 self.event(format!("lock: {s}"));
                 // Relock consequences print (and become expectable) after
@@ -367,6 +416,46 @@ impl Emu {
                 self.drain_relocks();
             }
             _ => println!("? time +<n>[s|m|h] | time set <unix>"),
+        }
+    }
+
+    /// Drive the virtual GNSS/accel/RTC the slot gates read.
+    ///   env fence <idx> <in|out>   move the lock in/out of a geofence
+    ///   env still <secs>           set how long it's been motionless
+    ///   env cal <idx> <open|shut>  open/close a calendar window
+    ///   env show                   print the current environment
+    fn cmd_env(&mut self, words: &[&str]) {
+        match words {
+            ["env", "fence", idx, state] => {
+                let b = 1u64 << idx.parse::<u8>().expect("fence idx");
+                match *state {
+                    "in" => self.env.fences |= b,
+                    "out" => self.env.fences &= !b,
+                    _ => return println!("? env fence <idx> <in|out>"),
+                }
+                self.event(format!("env: fence {idx} {state}"));
+            }
+            ["env", "still", secs] => {
+                self.env.still_s = secs.parse().expect("stillness secs");
+                self.event(format!("env: still for {}s", self.env.still_s));
+            }
+            ["env", "cal", idx, state] => {
+                let b = 1u64 << idx.parse::<u8>().expect("calendar idx");
+                match *state {
+                    "open" => self.env.calendars |= b,
+                    "shut" | "closed" => self.env.calendars &= !b,
+                    _ => return println!("? env cal <idx> <open|shut>"),
+                }
+                self.event(format!("env: calendar {idx} {state}"));
+            }
+            ["env", "show"] => {
+                let s = format!(
+                    "env: fences=0x{:x} still={}s calendars=0x{:x}",
+                    self.env.fences, self.env.still_s, self.env.calendars
+                );
+                self.event(s);
+            }
+            _ => println!("? env fence <i> <in|out> | env still <s> | env cal <i> <open|shut> | env show"),
         }
     }
 
@@ -442,6 +531,7 @@ fn describe(o: Outcome) -> String {
         Outcome::Beat(s) => format!("BEAT slot={s} (sustain refreshed)"),
         Outcome::Negative(s, n) => format!("NEGATIVE slot={s} {n:?} (decoy tripwire)"),
         Outcome::LockedOut(s) => format!("LOCKEDOUT slot={s}"),
+        Outcome::Gated(s, b) => format!("GATED slot={s} {b:?} (not burned)"),
         Outcome::Invalid => "INVALID (armed slots reset)".into(),
     }
 }
@@ -460,6 +550,7 @@ fn main() {
         seed: scn.seed,
         gen,
         lock,
+        env: Env::default(),
         last_event: String::new(),
         failures: 0,
         notebook: Vec::new(),

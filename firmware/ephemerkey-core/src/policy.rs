@@ -11,7 +11,8 @@ pub const MAX_PATH_LEGS: usize = 4;
 pub const MAX_QUORUM: usize = 4;
 
 /// Gates that must hold for codes to count toward a slot (composable).
-/// Evaluation lives with the caller (it owns GNSS/accel/RTC state).
+/// The engine never touches hardware — it asks the caller-supplied
+/// [`Sensors`] the questions below; the caller owns GNSS/accel/RTC state.
 #[derive(Copy, Clone, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Gates {
@@ -24,6 +25,70 @@ pub struct Gates {
 }
 // (Split-epoch freshness is not a gate: it is `delay_min_s..delay_max_s =
 // 0..X` on the Sequence policy — a slot has exactly one arrival window.)
+
+/// The first gate found shut, for telemetry and lock-side UX. A gate never
+/// silently swallows a valid code — the caller reports exactly why the slot
+/// wouldn't accept it.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum GateBlock {
+    /// Lock's own position is outside the required geofence.
+    Fence,
+    /// The lock has not been still long enough (motion/tamper).
+    Stillness,
+    /// Outside the permitted calendar window.
+    Calendar,
+}
+
+/// The runtime environment gates evaluate against. Firmware implements this
+/// over the real GNSS fix / LIS3DH activity / RTC; the emulator fakes it.
+/// Keeping it a trait is what lets the exact same engine run on-device and
+/// on a laptop without any hardware in the loop.
+pub trait Sensors {
+    /// Is the lock currently inside fence-table entry `fence`?
+    fn inside_fence(&self, fence: u8) -> bool;
+    /// Seconds the lock has been continuously still (accelerometer quiet).
+    fn still_for_s(&self) -> u32;
+    /// Is calendar-window `window` open at the current time?
+    fn calendar_open(&self, window: u8) -> bool;
+}
+
+/// Every gate open — the environment for ungated call sites and unit tests
+/// that don't model position/motion/time-of-day.
+pub struct AllGatesOpen;
+impl Sensors for AllGatesOpen {
+    fn inside_fence(&self, _: u8) -> bool {
+        true
+    }
+    fn still_for_s(&self) -> u32 {
+        u32::MAX
+    }
+    fn calendar_open(&self, _: u8) -> bool {
+        true
+    }
+}
+
+impl Gates {
+    /// The first gate that is currently shut, or `None` if the slot is live.
+    /// Evaluated left-to-right (fence, then stillness, then calendar) so the
+    /// reported reason is stable.
+    pub fn block(&self, env: &impl Sensors) -> Option<GateBlock> {
+        if let Some(f) = self.own_fence {
+            if !env.inside_fence(f) {
+                return Some(GateBlock::Fence);
+            }
+        }
+        if self.stillness_s > 0 && env.still_for_s() < u32::from(self.stillness_s) {
+            return Some(GateBlock::Stillness);
+        }
+        if let Some(w) = self.calendar {
+            if !env.calendar_open(w) {
+                return Some(GateBlock::Calendar);
+            }
+        }
+        None
+    }
+}
 
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

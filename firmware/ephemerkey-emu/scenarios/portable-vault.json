@@ -1,0 +1,16 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    { "secret": "portable-vault-master", "digits": 6, "display": { "mode": "plain" } }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "policy": { "type": "always" },
+      "progress": true,
+      "reset_on_invalid": false,
+      "gates": { "fence": 0, "stillness_s": 20, "calendar": 0 }
+    }
+  ]
+}

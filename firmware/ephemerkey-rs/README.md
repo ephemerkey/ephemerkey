@@ -79,6 +79,9 @@ Requires `rustup` (pulls the pinned toolchain + target via
 - [ ] USB FS provisioning console (`embassy-usb`, button-gated)
 - [ ] Lock link: nonce/HMAC command flow over I2C3 (+ soak
       against the real lock through actuation transients)
-- [ ] Policy engine: gate evaluation (GNSS/accel/RTC), confirm-TOTP (HOTP receipt)
 - [x] Path / DeadMan / Quorum state machines (ephemerkey-core, emulator-proven)
+- [x] Policy-engine gate model: `Sensors` trait + fence/stillness/calendar
+      gates in `ephemerkey-core` (emulator-proven); firmware still needs the
+      real `Sensors` impl over GNSS-fix / LIS3DH-activity / RTC
+- [ ] Confirm-TOTP (HOTP receipt) minted on fire, for the validator/WiFi path
 - [ ] ESP32-C3 protocol: OTA staging, config file transport
