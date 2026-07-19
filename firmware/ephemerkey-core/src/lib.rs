@@ -24,4 +24,4 @@ pub mod totp;
 /// reject a config whose crit entry it doesn't recognize (silent
 /// non-enforcement of a protection is the failure mode this prevents —
 /// same idea as X.509 critical extensions / COSE `crit`).
-pub const SUPPORTED_POLICY_FEATURES: &[&str] = &["seq-jitter", "quorum-pace"];
+pub const SUPPORTED_POLICY_FEATURES: &[&str] = &["seq-jitter", "quorum-pace", "chain", "veto", "budget"];

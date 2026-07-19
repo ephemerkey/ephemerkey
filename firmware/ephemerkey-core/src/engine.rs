@@ -83,6 +83,13 @@ pub enum Outcome {
     Gated(u8, GateBlock),
     /// Matched nothing: `reset_on_invalid` slots were reset.
     Invalid,
+    /// Policy satisfied on a veto slot: ARMED, fires at the given unix time
+    /// unless canceled by the veto key first.
+    Armed(u8, u64),
+    /// An armed slot was canceled by its veto key.
+    Vetoed(u8),
+    /// Budget exhausted: the policy completed but the slot is spent.
+    Exhausted(u8),
 }
 
 pub struct LockEngine {
@@ -96,6 +103,12 @@ pub struct LockEngine {
     lockout_until: [u32; MAX_SLOTS],
     /// Bit i set: slot i's DeadMan sustain expired — caller must re-lock.
     pending_relock: u8,
+    /// Armed veto slots: fire at this unix time unless canceled.
+    armed_until: [Option<u64>; MAX_SLOTS],
+    /// Bit i set: slot i's veto window elapsed — caller must actuate now.
+    pending_fire: u8,
+    /// Fires per slot (budget accounting).
+    fired_count: [u16; MAX_SLOTS],
     /// Optional confirm-TOTP minter — the lock's own event receipts. When
     /// set, every fire and re-lock mints a [`Receipt`] into `pending_receipt`.
     pub receipts: Option<Receipts>,
@@ -120,8 +133,36 @@ impl LockEngine {
             burned: [0; MAX_SLOTS],
             lockout_until: [0; MAX_SLOTS],
             pending_relock: 0,
+            armed_until: [None; MAX_SLOTS],
+            pending_fire: 0,
+            fired_count: [0; MAX_SLOTS],
             receipts: None,
             pending_receipt: [None; MAX_RECEIPTS],
+        }
+    }
+
+    /// Attest button: mint a fresh receipt for the CURRENT physical state on
+    /// demand (the caller knows the bolt state). Each press consumes a new
+    /// event counter, so re-attesting when a code went missing is always
+    /// safe — the validator's look-ahead absorbs the skips.
+    pub fn attest(&mut self, action: Action, now: u64) {
+        self.mint_receipt(action, now as u32);
+    }
+
+    /// Armed veto slots whose window elapsed since the last call (bit i =
+    /// slot i): the caller must actuate the slot's action NOW. Drained like
+    /// [`take_relocks`](Self::take_relocks).
+    pub fn take_fires(&mut self) -> u8 {
+        core::mem::take(&mut self.pending_fire)
+    }
+
+    /// The slot's remaining budget (None = unlimited).
+    pub fn budget_left(&self, i: usize) -> Option<u16> {
+        let slot = self.slots.get(i).copied().flatten()?;
+        if slot.budget == 0 {
+            None
+        } else {
+            Some(slot.budget.saturating_sub(self.fired_count[i]))
         }
     }
 
@@ -210,6 +251,15 @@ impl LockEngine {
                     self.pending_relock |= 1 << i;
                     self.mint_receipt(relock_action(slot.action), now_s);
                 }
+                // Armed veto slot whose window elapsed: fire it now.
+                if let Some(fire_at) = self.armed_until[i] {
+                    if now >= fire_at {
+                        self.armed_until[i] = None;
+                        self.fired_count[i] = self.fired_count[i].saturating_add(1);
+                        self.pending_fire |= 1 << i;
+                        self.mint_receipt(slot.action, now_s);
+                    }
+                }
             }
         }
     }
@@ -252,6 +302,25 @@ impl LockEngine {
         self.tick(now);
         let now_s = now as u32;
 
+        // Veto check first: while any slot is armed, a valid code from its
+        // veto key cancels the pending action.
+        for i in 0..MAX_SLOTS {
+            let Some(slot) = self.slots[i] else { continue };
+            if self.armed_until[i].is_none() {
+                continue;
+            }
+            let Some(vk) = slot.veto_key else { continue };
+            let Some(key) = self.keys[vk as usize] else { continue };
+            let Some(code) = Code::parse(entered, key.digits) else {
+                continue;
+            };
+            if Self::match_key(&key, code, now, (0, 2 * crate::totp::PERIOD_S)).is_some() {
+                self.armed_until[i] = None;
+                self.state[i].reset();
+                return Outcome::Vetoed(i as u8);
+            }
+        }
+
         for i in 0..MAX_SLOTS {
             let Some(slot) = self.slots[i] else { continue };
             let delay = slot.policy.delay_window();
@@ -286,6 +355,15 @@ impl LockEngine {
                     return match self.state[i].on_code(&slot, kidx, counter, now_s) {
                         Verdict::Progress(h, n) => Outcome::Progress(i as u8, h, n),
                         Verdict::Fire(a) => {
+                            if slot.budget > 0 && self.fired_count[i] >= slot.budget {
+                                return Outcome::Exhausted(i as u8);
+                            }
+                            if slot.veto_delay_s > 0 {
+                                let fire_at = now + u64::from(slot.veto_delay_s);
+                                self.armed_until[i] = Some(fire_at);
+                                return Outcome::Armed(i as u8, fire_at);
+                            }
+                            self.fired_count[i] = self.fired_count[i].saturating_add(1);
                             self.mint_receipt(a, now_s);
                             Outcome::Fired(i as u8, a)
                         }
@@ -354,6 +432,9 @@ mod tests {
             show_progress: true,
             reset_on_invalid: true,
             negative: NegativeAction::Lockout(300),
+            veto_delay_s: 0,
+            veto_key: None,
+            budget: 0,
         }
     }
 
@@ -469,6 +550,9 @@ mod tests {
             show_progress: true,
             reset_on_invalid: true,
             negative: NegativeAction::Reset,
+            veto_delay_s: 0,
+            veto_key: None,
+            budget: 0,
         }
     }
 
@@ -695,6 +779,9 @@ mod tests {
             show_progress: true,
             reset_on_invalid: false,
             negative: NegativeAction::Reset,
+            veto_delay_s: 0,
+            veto_key: None,
+            budget: 0,
         });
         e
     }
@@ -916,5 +1003,60 @@ mod tests {
         assert!(dc_short >= 1);
         let c3 = c2 + dc_short;
         assert_eq!(st.on_code(&slot, 0, c3, now2 + dc_short * 30), Verdict::Reset);
+    }
+
+    #[test]
+    fn veto_window_arms_cancels_and_fires() {
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(SECRET, 6));
+        e.keys[1] = Some(KeyDef::new(b"veto-secret-000000000", 6));
+        let mut s = slot_with(Policy::AlwaysValid);
+        s.veto_delay_s = 120;
+        s.veto_key = Some(1);
+        s.budget = 1;
+        e.slots[0] = Some(s);
+        let t0 = 1_750_000_000u64;
+
+        // Satisfied policy ARMS instead of firing.
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0), t0),
+            Outcome::Armed(0, t0 + 120)
+        );
+        // The veto key cancels inside the window.
+        assert_eq!(
+            e.enter_code(&code_at(b"veto-secret-000000000", t0 + 30), t0 + 30),
+            Outcome::Vetoed(0)
+        );
+        e.tick(t0 + 300);
+        assert_eq!(e.take_fires(), 0, "canceled slot must not fire");
+
+        // Re-arm (fresh counter) and let the window elapse: it fires.
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0 + 90), t0 + 90),
+            Outcome::Armed(0, t0 + 210)
+        );
+        e.tick(t0 + 211);
+        assert_eq!(e.take_fires(), 0b1);
+        assert_eq!(e.budget_left(0), Some(0));
+
+        // Budget of 1 is spent: the next completed policy is Exhausted.
+        assert_eq!(
+            e.enter_code(&code_at(SECRET, t0 + 300), t0 + 300),
+            Outcome::Exhausted(0)
+        );
+    }
+
+    #[test]
+    fn attest_mints_fresh_state_receipts_on_demand() {
+        use crate::receipt::{ReceiptMode, Receipts};
+        let mut e = LockEngine::new();
+        e.receipts = Some(Receipts::new(b"confirm-secret-000000", 6, ReceiptMode::Sequence));
+        let t0 = 1_750_000_000u64;
+        e.attest(Action::Lock, t0);
+        e.attest(Action::Lock, t0 + 5);
+        let r1 = e.take_receipt().expect("first attest");
+        let r2 = e.take_receipt().expect("second attest");
+        assert_eq!((r1.action, r2.action), (Action::Lock, Action::Lock));
+        assert_eq!(r2.seq, r1.seq + 1, "each press consumes a fresh counter");
     }
 }

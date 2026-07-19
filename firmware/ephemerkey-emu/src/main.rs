@@ -27,7 +27,8 @@ use ephemerkey_core::policy::{
     Action, Gates, NegativeAction, Policy, Sensors, Slot, MAX_PATH_LEGS, MAX_QUORUM,
 };
 use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Receipts, Validator};
-use ephemerkey_core::reveal::{DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
+use ephemerkey_core::totp::Code;
+use ephemerkey_core::reveal::{ChainErr, ChainSpec, DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
 use serde::Deserialize;
 use std::io::BufRead;
 
@@ -94,6 +95,35 @@ struct KeyCfg {
     /// index of this key's decoy twin in `keys`
     decoy: Option<u8>,
     display: Option<DisplayCfg>,
+    /// Receipt chain: this key's REAL reveals require feeding the lock's
+    /// receipt code back into the generator, then a cooling-off.
+    chain: Option<ChainCfg>,
+}
+
+#[derive(Deserialize)]
+struct ChainCfg {
+    /// The lock's confirm secret (the generator holds a Validator over it).
+    secret: String,
+    #[serde(default = "default_digits")]
+    digits: u8,
+    #[serde(default)]
+    mode: ReceiptModeCfg,
+    /// Which receipt action feeds the chain ("lock" = witnessed it locked).
+    #[serde(default = "default_chain_action")]
+    action: String,
+    /// Reveals resume this long after a receipt is fed.
+    #[serde(default)]
+    min_elapsed_s: u32,
+    /// Accepted receipt age for TIME-mode proofs (travel time to a far
+    /// generator). Sequence proofs are ageless by construction.
+    #[serde(default = "default_max_age")]
+    max_age_s: u32,
+}
+fn default_chain_action() -> String {
+    "lock".into()
+}
+fn default_max_age() -> u32 {
+    3600
 }
 fn default_digits() -> u8 {
     6
@@ -151,6 +181,14 @@ struct SlotCfg {
     negative: String,
     #[serde(default)]
     gates: GatesCfg,
+    /// Veto window: 0 = fire immediately; >0 = arm, fire after this many
+    /// seconds unless a valid code from veto_key cancels.
+    #[serde(default)]
+    veto_delay_s: u16,
+    veto_key: Option<u8>,
+    /// 0 = unlimited; otherwise the slot dies after this many fires.
+    #[serde(default)]
+    budget: u16,
 }
 
 /// Position / motion / calendar gates on a slot. Evaluated against the
@@ -244,15 +282,13 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
         let mut kd = KeyDef::new(k.secret.as_bytes(), k.digits);
         kd.decoy = k.decoy;
         lock.keys[i] = Some(kd);
-        if let Some(d) = &k.display {
+        if k.display.is_some() || k.chain.is_some() {
             let decoy_kd = k.decoy.map(|di| {
                 let dk = &scn.keys[di as usize];
                 KeyDef::new(dk.secret.as_bytes(), dk.digits)
             });
-            gen.keys[i] = Some(GenKey {
-                key: kd,
-                decoy: decoy_kd,
-                display: DisplaySpec {
+            let display = match &k.display {
+                Some(d) => DisplaySpec {
                     mode: match d.mode {
                         ModeCfg::Plain => DisplayMode::Plain,
                         ModeCfg::Scatter => DisplayMode::Scatter,
@@ -266,6 +302,33 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                     },
                     gap_min_s: d.gap_min_s,
                 },
+                None => DisplaySpec {
+                    mode: DisplayMode::Plain,
+                    dwell_ms: 800,
+                    reveal_s: 5,
+                    once: OnceMode::Unlimited,
+                    gap_min_s: 0,
+                },
+            };
+            let chain = k.chain.as_ref().map(|c| {
+                let mut validator =
+                    Validator::new(c.secret.as_bytes(), c.digits, ReceiptMode::from(c.mode));
+                validator.time_window_s = c.max_age_s;
+                ChainSpec {
+                    validator,
+                    action: match c.action.as_str() {
+                        "unlock" => Action::Unlock,
+                        "duress" => Action::DuressUnlock,
+                        _ => Action::Lock,
+                    },
+                    min_elapsed_s: c.min_elapsed_s,
+                }
+            });
+            gen.keys[i] = Some(GenKey {
+                key: kd,
+                decoy: decoy_kd,
+                display,
+                chain,
             });
         }
     }
@@ -337,6 +400,9 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                     }
                 }
             },
+            veto_delay_s: s.veto_delay_s,
+            veto_key: s.veto_key,
+            budget: s.budget,
             gates: Gates {
                 own_fence: s.gates.fence,
                 stillness_s: s.gates.stillness_s,
@@ -432,6 +498,11 @@ impl Emu {
             ["time", ..] => self.cmd_time(&words),
             ["env", ..] => self.cmd_env(&words),
 
+            ["gen", "chain", code] => self.cmd_chain(code, 0),
+            ["gen", "chain", code, k] => {
+                let k: usize = k.parse().unwrap_or(0);
+                self.cmd_chain(code, k)
+            }
             ["gen", "reveal"] => self.cmd_reveal(0),
             ["gen", "reveal", k] => self.cmd_reveal(k.parse().unwrap_or(0)),
             ["gen", "next"] => self.cmd_next(0),
@@ -460,6 +531,22 @@ impl Emu {
             }
             ["lock", "status"] => self.cmd_status(),
 
+            // Attest button: mint a fresh receipt for the current state.
+            ["lock", "attest"] => {
+                self.lock.attest(Action::Lock, self.now);
+                self.event("lock: ATTEST (state=locked)".into());
+                self.drain_receipts();
+            }
+            ["lock", "attest", which] => {
+                let a = match *which {
+                    "unlock" => Action::Unlock,
+                    _ => Action::Lock,
+                };
+                self.lock.attest(a, self.now);
+                self.event(format!("lock: ATTEST (state={which})"));
+                self.drain_receipts();
+            }
+
             ["validate", r] => self.cmd_validate(r),
 
             ["expect", rest @ ..] => {
@@ -481,6 +568,12 @@ impl Emu {
         for i in 0..8u8 {
             if mask & (1 << i) != 0 {
                 self.event(format!("lock: RELOCK slot={i} (dead-man expired)"));
+            }
+        }
+        let fires = self.lock.take_fires();
+        for i in 0..8u8 {
+            if fires & (1 << i) != 0 {
+                self.event(format!("lock: FIRE slot={i} (veto window elapsed)"));
             }
         }
     }
@@ -625,6 +718,45 @@ impl Emu {
                 self.event(format!("gen: REFUSED key={k} next in {in_s}s"));
             }
             Err(RevealErr::NoSuchKey) => self.event(format!("gen: no key {k}")),
+            Err(RevealErr::ChainRequired) => {
+                self.event(format!("gen: CHAINLOCKED key={k} — feed the lock's receipt code first"))
+            }
+            Err(RevealErr::ChainWait(u)) => {
+                let in_s = u.saturating_sub(self.now);
+                self.event(format!("gen: CHAINWAIT key={k} — reveals resume in {in_s}s"))
+            }
+        }
+    }
+
+    /// Feed a lock receipt code into the generator's chain: `gen chain <code|@R> [key]`.
+    fn cmd_chain(&mut self, arg: &str, k: usize) {
+        let code_str = if let Some(n) = arg.strip_prefix('@') {
+            let i: usize = n.parse().unwrap_or(0);
+            let Some(r) = self.receipts.get(i.wrapping_sub(1)) else {
+                return self.event(format!("gen: no receipt @{n}"));
+            };
+            let Some(c) = r.seq_code.or(r.time_code) else {
+                return self.event(format!("gen: receipt @{n} carries no code"));
+            };
+            let mut buf = [0u8; 10];
+            c.render(&mut buf).to_string()
+        } else {
+            arg.to_string()
+        };
+        let digits = code_str.len() as u8;
+        let Some(code) = Code::parse(&code_str, digits) else {
+            return self.event(format!("gen: bad chain code '{code_str}'"));
+        };
+        match self.gen.feed_chain(k, code, self.now) {
+            Ok(at) => {
+                let in_s = at.saturating_sub(self.now);
+                self.event(format!("gen: CHAIN ACCEPTED key={k} — reveals resume in {in_s}s"))
+            }
+            Err(ChainErr::NoSuchKey) => self.event(format!("gen: no key {k}")),
+            Err(ChainErr::NoChain) => self.event(format!("gen: key {k} has no chain")),
+            Err(ChainErr::Rejected(c)) => {
+                self.event(format!("gen: CHAIN REJECTED key={k} — {}", describe_check(c)))
+            }
         }
     }
 
@@ -664,6 +796,9 @@ fn describe(o: Outcome) -> String {
         Outcome::LockedOut(s) => format!("LOCKEDOUT slot={s}"),
         Outcome::Gated(s, b) => format!("GATED slot={s} {b:?} (not burned)"),
         Outcome::Invalid => "INVALID (armed slots reset)".into(),
+        Outcome::Armed(s, at) => format!("ARMED slot={s} fires at t={at} unless vetoed"),
+        Outcome::Vetoed(s) => format!("VETOED slot={s} (pending action canceled)"),
+        Outcome::Exhausted(s) => format!("EXHAUSTED slot={s} (usage budget spent)"),
     }
 }
 

@@ -217,6 +217,30 @@ impl Validator {
         ReceiptCheck::Valid { skipped, drift_s }
     }
 
+    /// Verify a receipt from its CODE ALONE — what a human can actually
+    /// carry from the lock's display to a generator keypad. Sequence modes
+    /// resync by searching the look-ahead window (RFC 4226 §7.4); pure Time
+    /// mode searches the drift window. `Both` verifies the sequence proof.
+    pub fn verify_code(&mut self, action: Action, code: Code, now_s: u32) -> ReceiptCheck {
+        if self.mode.has_seq() {
+            let mut seq = self.expected_seq;
+            while seq < self.expected_seq.saturating_add(self.look_ahead) {
+                if hotp(self.secret(), msg(KIND_SEQ, action, seq), self.digits) == code {
+                    let skipped = seq - self.expected_seq;
+                    self.expected_seq = seq.wrapping_add(1);
+                    return ReceiptCheck::Valid { skipped, drift_s: 0 };
+                }
+                seq += 1;
+            }
+            ReceiptCheck::BadCode
+        } else {
+            match self.check_time(action, code, now_s) {
+                Ok(drift_s) => ReceiptCheck::Valid { skipped: 0, drift_s },
+                Err(e) => e,
+            }
+        }
+    }
+
     fn check_seq(&self, action: Action, seq: u32, code: Code) -> Result<u32, ReceiptCheck> {
         if seq < self.expected_seq {
             return Err(ReceiptCheck::Replay);

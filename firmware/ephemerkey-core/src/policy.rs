@@ -206,6 +206,16 @@ pub struct Slot {
     pub reset_on_invalid: bool,
     /// What a decoy match does to this slot.
     pub negative: NegativeAction,
+    /// Veto window: 0 = fire immediately. >0 = a satisfied policy ARMS the
+    /// slot; the action fires only after this many seconds unless a valid
+    /// code from `veto_key` lands first (coercion brake: an armed lock and
+    /// a window for someone to stop it).
+    pub veto_delay_s: u16,
+    /// Key whose codes cancel an armed slot (None = veto disabled).
+    pub veto_key: Option<u8>,
+    /// Usage budget: 0 = unlimited. Otherwise the slot dies after this
+    /// many fires (courier keys, one-time overrides).
+    pub budget: u16,
 }
 
 /// Runtime state — RAM only, deliberately lost on power-cycle.

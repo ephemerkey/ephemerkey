@@ -6,7 +6,8 @@
 //! the `introspect` feature is on (emulator/tests only — never firmware).
 
 use crate::engine::KeyDef;
-use crate::policy::MAX_KEYS;
+use crate::policy::{Action, MAX_KEYS};
+use crate::receipt::{ReceiptCheck, Validator};
 use crate::totp::{totp_at, Code, MAX_DIGITS};
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -43,6 +44,22 @@ pub struct DisplaySpec {
     pub gap_min_s: u16,
 }
 
+/// Receipt chain: the generator refuses to mint this key's codes until it
+/// has been fed (witnessed) the lock's receipt from the previous session,
+/// and a minimum time has passed since. The human carries the lock's code
+/// BACK to the generator — continuity both ways. The lock's attest button
+/// can mint a fresh state receipt any time one goes missing.
+#[derive(Copy, Clone)]
+pub struct ChainSpec {
+    /// Validator over the lock's confirm secret.
+    pub validator: Validator,
+    /// Which receipt action feeds the chain. Default `Lock`: "I witnessed
+    /// it locked" — exactly what the attest button re-mints on demand.
+    pub action: Action,
+    /// Codes mint only this long after a receipt was fed (cooling-off).
+    pub min_elapsed_s: u32,
+}
+
 #[derive(Copy, Clone)]
 pub struct GenKey {
     pub key: KeyDef,
@@ -50,6 +67,8 @@ pub struct GenKey {
     /// same digits, same spec — enforced by construction here.
     pub decoy: Option<KeyDef>,
     pub display: DisplaySpec,
+    /// Optional receipt chain gating this key's REAL reveals.
+    pub chain: Option<ChainSpec>,
 }
 
 /// One reveal, ready for the display driver. Identical shape for real and
@@ -72,12 +91,29 @@ pub enum RevealErr {
     /// Show-once refusal: next legitimate reveal at this unix time.
     RefusedUntil(u64),
     NoSuchKey,
+    /// Receipt chain: feed the lock's receipt code before this key mints.
+    ChainRequired,
+    /// Receipt fed; cooling-off runs until this unix time.
+    ChainWait(u64),
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum ChainErr {
+    NoSuchKey,
+    /// Key has no chain configured.
+    NoChain,
+    /// The code did not verify (wrong/replayed/desynced).
+    Rejected(ReceiptCheck),
 }
 
 #[derive(Copy, Clone, Default)]
 struct GenKeyState {
     /// Unix time of the last REAL reveal (0 = never).
     last_real: u64,
+    /// Chain: unix time the last receipt was fed (0 = never).
+    chain_fed_at: u64,
+    /// Chain: a real reveal happened since the last feed — locked again.
+    chain_spent: bool,
 }
 
 pub struct Generator {
@@ -110,6 +146,21 @@ impl Generator {
             .ok_or(RevealErr::NoSuchKey)?;
         let st = &mut self.state[idx];
 
+        // Receipt chain: real reveals need a fresh witnessed receipt plus
+        // the cooling-off. (Poison-mode decoys below stay unaffected — an
+        // observer can't distinguish a chain-blocked generator.)
+        if let Some(ch) = gk.chain {
+            if st.chain_spent {
+                return Err(RevealErr::ChainRequired);
+            }
+            if st.chain_fed_at > 0 {
+                let ready_at = st.chain_fed_at + u64::from(ch.min_elapsed_s);
+                if now < ready_at {
+                    return Err(RevealErr::ChainWait(ready_at));
+                }
+            }
+        }
+
         // Is a real reveal permitted right now?
         let real_ok = match gk.display.once {
             OnceMode::Unlimited => true,
@@ -118,6 +169,9 @@ impl Generator {
 
         let (secret_key, is_decoy) = if real_ok {
             st.last_real = now;
+            if gk.chain.is_some() {
+                st.chain_spent = true; // next session needs a new witness
+            }
             (gk.key, false)
         } else {
             match gk.display.once {
@@ -150,6 +204,27 @@ impl Generator {
             #[cfg(feature = "introspect")]
             decoy: is_decoy,
         })
+    }
+
+    /// Feed a lock receipt code into key `idx`'s chain. On success the
+    /// chain re-arms and returns the unix time reveals resume.
+    pub fn feed_chain(&mut self, idx: usize, code: Code, now: u64) -> Result<u64, ChainErr> {
+        let Some(gk) = self.keys.get_mut(idx).and_then(|k| k.as_mut()) else {
+            return Err(ChainErr::NoSuchKey);
+        };
+        let Some(ch) = gk.chain.as_mut() else {
+            return Err(ChainErr::NoChain);
+        };
+        match ch.validator.verify_code(ch.action, code, now as u32) {
+            ReceiptCheck::Valid { .. } => {
+                let min_elapsed = u64::from(ch.min_elapsed_s);
+                let st = &mut self.state[idx];
+                st.chain_fed_at = now;
+                st.chain_spent = false;
+                Ok(now + min_elapsed)
+            }
+            e => Err(ChainErr::Rejected(e)),
+        }
     }
 
     /// Seconds until the next real reveal for the key (0 = now). UX helper
@@ -200,6 +275,7 @@ mod tests {
                 once,
                 gap_min_s: 90,
             },
+            chain: None,
         }
     }
 
@@ -245,5 +321,47 @@ mod tests {
         // And the real stream resumes on cadence:
         let real2 = g.reveal(0, t + 95, 7).unwrap();
         assert!(!real2.decoy);
+    }
+
+    #[test]
+    fn receipt_chain_gates_real_reveals() {
+        use crate::receipt::{ReceiptMode, Receipts, Validator};
+        const CONFIRM: &[u8] = b"confirm-secret-000000";
+        let mut lock_receipts = Receipts::new(CONFIRM, 6, ReceiptMode::Sequence);
+
+        let mut g = Generator::new();
+        let mut gk = genkey(OnceMode::Unlimited);
+        gk.display.gap_min_s = 0;
+        gk.chain = Some(ChainSpec {
+            validator: Validator::new(CONFIRM, 6, ReceiptMode::Sequence),
+            action: Action::Lock,
+            min_elapsed_s: 600,
+        });
+        g.keys[0] = Some(gk);
+        let t0 = 1_750_000_000u64;
+
+        // Genesis reveal is free; it spends the chain.
+        assert!(g.reveal(0, t0, 1).is_ok());
+        assert_eq!(g.reveal(0, t0 + 40, 2).err(), Some(RevealErr::ChainRequired));
+
+        // Garbage codes don't re-arm it.
+        assert!(matches!(
+            g.feed_chain(0, crate::totp::Code { value: 123456, digits: 6 }, t0 + 50),
+            Err(ChainErr::Rejected(_))
+        ));
+
+        // A real lock receipt re-arms; the cooling-off holds until elapsed.
+        let r = lock_receipts.mint(Action::Lock, (t0 + 60) as u32);
+        let unlock_at = g.feed_chain(0, r.seq_code.unwrap(), t0 + 60).unwrap();
+        assert_eq!(unlock_at, t0 + 660);
+        assert_eq!(g.reveal(0, t0 + 120, 3).err(), Some(RevealErr::ChainWait(t0 + 660)));
+        assert!(g.reveal(0, t0 + 660, 4).is_ok());
+        assert_eq!(g.reveal(0, t0 + 700, 5).err(), Some(RevealErr::ChainRequired));
+
+        // Attest re-mints (skipping counters is fine): a LATER receipt still
+        // verifies via look-ahead — the missing-code recovery path.
+        let _lost = lock_receipts.mint(Action::Lock, (t0 + 800) as u32);
+        let r2 = lock_receipts.mint(Action::Lock, (t0 + 900) as u32);
+        assert!(g.feed_chain(0, r2.seq_code.unwrap(), t0 + 900).is_ok());
     }
 }

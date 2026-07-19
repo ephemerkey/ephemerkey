@@ -1,0 +1,47 @@
+# chained vault: receipt chain (generator witness) + veto window + budget
+# run: ekemu scenarios/chained-vault.json < scenarios/chained-vault.script
+
+echo == round 1: genesis reveal, arm, veto ==
+gen reveal
+lock enter @1
+expect ARMED
+gen reveal 1
+lock enter @2
+expect VETOED
+
+echo == chain is spent: generator refuses until fed a lock receipt ==
+gen reveal
+expect CHAINLOCKED
+
+echo == attest button mints a fresh locked receipt; feeding re-arms ==
+lock attest
+expect RECEIPT
+gen chain @1
+expect CHAIN ACCEPTED
+gen reveal
+expect CHAINWAIT
+time +60s
+gen reveal
+lock enter @3
+expect ARMED
+time +121s
+expect RECEIPT @2 action=Unlock
+
+echo == round 2 consumes the last budget ==
+lock attest
+gen chain @3
+time +60s
+gen reveal
+lock enter @4
+expect ARMED
+time +121s
+expect RECEIPT @4 action=Unlock
+
+echo == budget spent: policy completes but the slot is dead ==
+lock attest
+gen chain @5
+time +60s
+gen reveal
+lock enter @5
+expect EXHAUSTED
+quit
