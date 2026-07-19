@@ -75,7 +75,9 @@ Requires `rustup` (pulls the pinned toolchain + target via
 - [x] TOTP core: RustCrypto `hmac`/`sha1` in `ephemerkey-core` (RFC-vector tested)
 - [ ] NMEA parse + geofence (port `geofence.c` point-in-polygon)
 - [ ] TIM2_CH1 PPS capture → RTC discipline + staleness window
-- [ ] Flash config journal (last 2×2KB pages, CRC ping-pong) + RDP/HDP
+- [ ] Flash journal (`sequential-storage`): config/secret map (2×2KB
+      ping-pong, rare writes) + confirm-TOTP counter queue (2×2KB append,
+      ECC-safe single-write-per-word) + RDP/HDP — see `src/config.rs`
 - [ ] USB FS provisioning console (`embassy-usb`, button-gated)
 - [ ] Lock link: nonce/HMAC command flow over I2C3 (+ soak
       against the real lock through actuation transients)

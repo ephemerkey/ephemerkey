@@ -330,6 +330,21 @@ excised or edited record breaks every subsequent chain tag (tamper-evident
 audit trail). Torn writes are detected by CRC + sequence and skipped. 4M-cycle
 endurance → decades of ring logging.
 
+**Counters.** The confirm-TOTP event counter (bumped every fire/relock) and
+the config anti-rollback `seq` are monotonic and must survive power loss, but
+they are written far more often than the ~1 KB config blob — so they live in a
+**separate 2×2KB append region**, not the config record. Unlock/lock events
+aren't frequent, but we size for them anyway: exploiting NOR's program-`1→0` /
+bulk-erase asymmetry, each bump programs the next fresh 64-bit double-word
+(STM32U0 ECC forbids re-writing a unit before erase, so we append rather than
+re-flip in place) and the region is bulk-erased only when full. That's 256
+bumps per 2 KB page, ~5M bumps across the two-page queue before the erase-cycle
+limit (verify the U0 number) — **>100 years even at a heavy 100 events/day**,
+so no reserve-ahead is needed for wear. A reboot resumes from the last
+persisted counter; the small skip is absorbed by the receipt validator's
+RFC 4226 look-ahead, so no counter is ever reused. Built on the
+`sequential-storage` log (ECC-safe single-write-per-word), not hand-rolled.
+
 **OTA flow (STM32-from-WiFi; later firmware work, no extra hardware):**
 
 1. ESP32 downloads the STM32 image into its own flash partition and verifies
