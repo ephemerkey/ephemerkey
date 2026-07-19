@@ -39,6 +39,10 @@ heapless = "0.8"
 # Shared logic (policy engine, TOTP, reveal scheduler) — same code the host
 # emulator and tests run. no_std, no alloc.
 ephemerkey-core = { path = "../ephemerkey-core" }
+# Provisioning: framed serial protocol + sealed-envelope crypto, shared with
+# the emulator (`ekemu serial`) and host-tested there and in ekctl e2e.
+ephemerkey-provision = { path = "../ephemerkey-provision" }
+ephemerkey-envelope = { path = "../ephemerkey-envelope" }
 
 [profile.release]
 debug = 2          # keep symbols for defmt/probe-rs; not flashed
