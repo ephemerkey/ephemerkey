@@ -184,6 +184,10 @@ enum PolicyCfg {
         delay_min_s: u16,
         #[serde(default = "default_delay_max")]
         delay_max_s: u16,
+        /// 0 = fixed pacing; >0 = each step's accept window is randomly
+        /// tightened by up to this many seconds (device-internal draw).
+        #[serde(default)]
+        jitter_s: u16,
     },
     Path {
         leg_keys: Vec<u8>,
@@ -199,7 +203,16 @@ enum PolicyCfg {
         window_s: u16,
         #[serde(default)]
         alternating: bool,
+        /// Paced quorum: contributions must keep this generation cadence
+        /// (defaults = unpaced).
+        #[serde(default)]
+        gap_min_s: u16,
+        #[serde(default = "default_gap_max")]
+        gap_max_s: u16,
     },
+}
+fn default_gap_max() -> u16 {
+    u16::MAX
 }
 fn default_delay_max() -> u16 {
     60
@@ -258,6 +271,7 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                     gap_max_s,
                     delay_min_s,
                     delay_max_s,
+                    jitter_s,
                 } => Policy::Sequence {
                     n,
                     window_s,
@@ -265,6 +279,7 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                     gap_max_s,
                     delay_min_s,
                     delay_max_s,
+                    pace_jitter_s: jitter_s,
                 },
                 PolicyCfg::Path {
                     leg_keys,
@@ -287,6 +302,8 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                     keys,
                     window_s,
                     alternating,
+                    gap_min_s,
+                    gap_max_s,
                 } => {
                     assert!(keys.len() >= *m as usize && keys.len() <= MAX_QUORUM);
                     let mut ks = [0u8; MAX_QUORUM];
@@ -297,6 +314,8 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
                         keys: ks,
                         window_s: *window_s,
                         alternating: *alternating,
+                        gap_min_s: *gap_min_s,
+                        gap_max_s: *gap_max_s,
                     }
                 }
             },

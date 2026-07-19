@@ -347,6 +347,7 @@ mod tests {
                 gap_max_s: 240,
                 delay_min_s: delay.0,
                 delay_max_s: delay.1,
+                pace_jitter_s: 0,
             },
             gates: Gates::default(),
             action: Action::Unlock,
@@ -587,6 +588,8 @@ mod tests {
             keys: [0, 1, 0, 0],
             window_s: 300,
             alternating: true,
+            gap_min_s: 0,
+            gap_max_s: u16::MAX,
         };
         e.slots[0] = Some(slot_with(quorum));
         let t0 = 1_750_000_000u64;
@@ -625,6 +628,8 @@ mod tests {
             keys: [0, 1, 0, 0],
             window_s: 300,
             alternating: false,
+            gap_min_s: 0,
+            gap_max_s: u16::MAX,
         }));
         let t0 = 1_750_000_000u64;
         assert_eq!(
@@ -818,5 +823,98 @@ mod tests {
             e.enter_code_with(&code_at(DECOY, t0), t0, &env),
             Outcome::Negative(0, NegativeAction::Reset)
         );
+    }
+
+    #[test]
+    fn paced_quorum_enforces_contribution_cadence() {
+        const ALICE: &[u8] = b"alice-secret-00000000";
+        const BOB: &[u8] = b"bob-secret-000000000x";
+        let mut e = LockEngine::new();
+        e.keys[0] = Some(KeyDef::new(ALICE, 6));
+        e.keys[1] = Some(KeyDef::new(BOB, 6));
+        e.slots[0] = Some(slot_with(Policy::Quorum {
+            m: 2,
+            n_keys: 2,
+            keys: [0, 1, 0, 0],
+            window_s: 600,
+            alternating: false,
+            gap_min_s: 60,
+            gap_max_s: 240,
+        }));
+        let t0 = 1_750_000_000u64;
+
+        // Bob arrives 30 s after Alice: under gap_min -> reset (a courier
+        // bursting two pre-minted codes fails).
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t0), t0),
+            Outcome::Progress(0, 1, 2)
+        );
+        let t1 = t0 + 30;
+        assert_eq!(e.enter_code(&code_at(BOB, t1), t1), Outcome::Reset(0));
+
+        // In-cadence round completes.
+        let t2 = t0 + 300;
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t2), t2),
+            Outcome::Progress(0, 1, 2)
+        );
+        let t3 = t2 + 90;
+        assert_eq!(
+            e.enter_code(&code_at(BOB, t3), t3),
+            Outcome::Fired(0, Action::Unlock)
+        );
+
+        // Too slow also resets.
+        let t4 = t3 + 300;
+        assert_eq!(
+            e.enter_code(&code_at(ALICE, t4), t4),
+            Outcome::Progress(0, 1, 2)
+        );
+        let t5 = t4 + 270;
+        assert_eq!(e.enter_code(&code_at(BOB, t5), t5), Outcome::Reset(0));
+    }
+
+    #[test]
+    fn jittered_sequence_draws_windows_and_enforces_them() {
+        use crate::policy::{SlotState, Verdict};
+        let paced = |jitter: u16| {
+            slot_with(Policy::Sequence {
+                n: 3,
+                window_s: 600,
+                gap_min_s: 60,
+                gap_max_s: 240,
+                delay_min_s: 0,
+                delay_max_s: 60,
+                pace_jitter_s: jitter,
+            })
+        };
+
+        // jitter = 0: the drawn window IS the configured window.
+        let slot = paced(0);
+        let mut st = SlotState::default();
+        assert_eq!(st.on_code(&slot, 0, 1000, 40_000), Verdict::Progress(1, 3));
+        assert_eq!(st.pace_window(), (60, 240));
+
+        // jitter = 60: window tightens within bounds and is enforced.
+        let slot = paced(60);
+        let mut st = SlotState::default();
+        assert_eq!(st.on_code(&slot, 0, 1000, 40_000), Verdict::Progress(1, 3));
+        let (lo, hi) = st.pace_window();
+        assert!((60..=120).contains(&lo), "lo {lo}");
+        assert!((180..=240).contains(&hi), "hi {hi}");
+        assert!(lo <= hi);
+
+        // A gap inside the drawn window advances...
+        let dc = u32::from(lo).div_ceil(30);
+        let c2 = 1000 + dc;
+        let now2 = 40_000 + dc * 30;
+        assert_eq!(st.on_code(&slot, 0, c2, now2), Verdict::Progress(2, 3));
+
+        // ...and a gap under the NEXT drawn minimum resets.
+        let (lo2, _) = st.pace_window();
+        let dc_short = (u32::from(lo2) - 1) / 30; // strictly under lo2
+        assert!(dc_short >= 1);
+        let c3 = c2 + dc_short;
+        assert_eq!(st.on_code(&slot, 0, c3, now2 + dc_short * 30), Verdict::Reset);
     }
 }

@@ -104,6 +104,13 @@ pub enum Policy {
     /// T is accepted only when `now - T` falls inside it (the verifier
     /// searches counters [(now-delay_max)/P .. (now-delay_min)/P]). 0..~60
     /// = instant slot; 1800..2100 = "generated 30-35 min ago".
+    /// `pace_jitter_s`: 0 = the classic fixed `[gap_min, gap_max]` accept
+    /// window every step. Non-zero = RANDOMIZED pacing — after each accepted
+    /// code the device draws the next step's effective window by tightening
+    /// both bounds by up to `pace_jitter_s` (clamped so the window never
+    /// empties): entries before the drawn minimum are a reject (reset),
+    /// entries after the drawn maximum likewise. The drawn window is device-
+    /// internal — the rhythm cannot be rehearsed, only felt out live.
     Sequence {
         n: u8,
         window_s: u16,
@@ -111,6 +118,7 @@ pub enum Policy {
         gap_max_s: u16,
         delay_min_s: u16,
         delay_max_s: u16,
+        pace_jitter_s: u16,
     },
     /// Ordered zone-keyed legs (walk-the-path / walk-away): leg i's code
     /// must mint from `leg_keys[i]`, legs strictly in minting order, each
@@ -131,12 +139,18 @@ pub enum Policy {
     /// M of the listed keys (distinct generators), interleaved within
     /// `window_s` of the first contribution. Each key counts once.
     /// `alternating`: the same key twice in a row resets the round.
+    /// `gap_min_s..gap_max_s` paces the CONTRIBUTIONS by generation
+    /// cadence, exactly like Sequence (0..=65535 = unpaced): a paced
+    /// quorum proves the parties acted in a deliberate shared rhythm,
+    /// not that one courier replayed a stack of pre-minted codes.
     Quorum {
         m: u8,
         n_keys: u8,
         keys: [u8; MAX_QUORUM],
         window_s: u16,
         alternating: bool,
+        gap_min_s: u16,
+        gap_max_s: u16,
     },
 }
 
@@ -210,6 +224,47 @@ pub struct SlotState {
     pub seen_mask: u8,
     /// Quorum: quorum key index of the last contribution (alternating rule).
     pub last_kidx: u8,
+    /// Randomized pacing (Sequence with `pace_jitter_s > 0`): xorshift state
+    /// and the currently drawn `[lo, hi]` accept window for the NEXT step.
+    /// Device-internal; deliberately not part of any wire format.
+    pub pace_rng: u32,
+    pub pace_lo_s: u16,
+    pub pace_hi_s: u16,
+}
+
+impl SlotState {
+    fn pace_next(&mut self) -> u32 {
+        // xorshift32; seeded per round in `on_code`
+        let mut x = self.pace_rng;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.pace_rng = x;
+        x
+    }
+
+    /// Draw the next step's effective accept window. Both bounds tighten by
+    /// up to `jitter`, clamped to half the span each so the window can
+    /// never empty.
+    fn pace_draw(&mut self, gap_min_s: u16, gap_max_s: u16, jitter_s: u16) {
+        if jitter_s == 0 {
+            self.pace_lo_s = gap_min_s;
+            self.pace_hi_s = gap_max_s;
+            return;
+        }
+        let span = gap_max_s.saturating_sub(gap_min_s);
+        let j = jitter_s.min(span / 2);
+        let r1 = (self.pace_next() % (u32::from(j) + 1)) as u16;
+        let r2 = (self.pace_next() % (u32::from(j) + 1)) as u16;
+        self.pace_lo_s = gap_min_s + r1;
+        self.pace_hi_s = gap_max_s - r2;
+    }
+
+    /// The currently drawn accept window (testing / emulator introspection).
+    #[cfg(any(test, feature = "introspect"))]
+    pub fn pace_window(&self) -> (u16, u16) {
+        (self.pace_lo_s, self.pace_hi_s)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -254,15 +309,17 @@ impl SlotState {
                 window_s,
                 gap_min_s,
                 gap_max_s,
+                pace_jitter_s,
                 ..
             } => {
                 if self.count > 0 {
                     // Generation cadence: spacing between minting times,
-                    // recovered from the matched counters.
+                    // recovered from the matched counters, checked against
+                    // the (possibly randomized) drawn accept window.
                     let gen_gap = (counter - self.last_counter) * PERIOD_S;
                     let in_window = now_s - self.window_start_s <= u32::from(window_s);
-                    if gen_gap < u32::from(gap_min_s)
-                        || gen_gap > u32::from(gap_max_s)
+                    if gen_gap < u32::from(self.pace_lo_s)
+                        || gen_gap > u32::from(self.pace_hi_s)
                         || !in_window
                     {
                         self.reset();
@@ -270,6 +327,9 @@ impl SlotState {
                     }
                 } else {
                     self.window_start_s = now_s;
+                    // Seed the round's pacing RNG from the first code's
+                    // minting counter + arrival time.
+                    self.pace_rng = counter.wrapping_mul(0x9e37_79b9) ^ now_s | 1;
                 }
                 self.count += 1;
                 self.last_counter = counter;
@@ -278,6 +338,7 @@ impl SlotState {
                     self.reset();
                     Verdict::Fire(slot.action)
                 } else {
+                    self.pace_draw(gap_min_s, gap_max_s, pace_jitter_s);
                     Verdict::Progress(self.count, n)
                 }
             }
@@ -322,11 +383,18 @@ impl SlotState {
                 m,
                 window_s,
                 alternating,
+                gap_min_s,
+                gap_max_s,
                 ..
             } => {
                 if self.count > 0 {
                     let in_window = now_s - self.window_start_s <= u32::from(window_s);
-                    if !in_window || (alternating && kidx == self.last_kidx) {
+                    // Paced quorum: contributions must keep the configured
+                    // generation cadence (0..=65535 = unpaced).
+                    let gen_gap = (counter - self.last_counter) * PERIOD_S;
+                    let paced_ok =
+                        gen_gap >= u32::from(gap_min_s) && gen_gap <= u32::from(gap_max_s);
+                    if !in_window || !paced_ok || (alternating && kidx == self.last_kidx) {
                         self.reset();
                         return Verdict::Reset;
                     }
