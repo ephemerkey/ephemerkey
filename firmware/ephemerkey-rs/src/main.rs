@@ -33,6 +33,10 @@ use embassy_time::Timer;
 // exercised on-host by the emulator (../ephemerkey-emu) and tests.
 use ephemerkey_core as _;
 
+// `discipline_from_unix` / `is_fresh` are the clock API the GNSS pipeline will
+// call once NMEA UTC parsing lands; keep them even though unused today.
+#[allow(dead_code)]
+mod clock;
 mod config;
 mod provision;
 #[cfg(feature = "usb-provision")]
@@ -65,7 +69,22 @@ async fn main(spawner: Spawner) {
     {
         config.rcc.hsi48 = Some(embassy_stm32::rcc::Hsi48Config { sync_from_usb: true });
     }
+    // RTC clock source (TOTP time base). The product board has the 32.768 kHz
+    // LSE crystal (PC14/PC15); the Nucleo has no guaranteed crystal, so fall
+    // back to the LSI. DESIGN.md Open Question 8 tracks LSE-vs-LSI accuracy.
+    #[cfg(feature = "board-ephemerkey")]
+    {
+        config.rcc.ls = embassy_stm32::rcc::LsConfig::default_lse();
+    }
+    #[cfg(feature = "board-nucleo-u083")]
+    {
+        config.rcc.ls = embassy_stm32::rcc::LsConfig::default_lsi();
+    }
     let p = embassy_stm32::init(config);
+
+    // TOTP time base. Undisciplined until the GNSS provides UTC; `now()` reads 0
+    // until then (see clock::now_unix / is_fresh).
+    clock::init(p.RTC);
 
     let cfg = config::load();
     info!("ephemerkey-rs boot, role: {}", cfg.role);

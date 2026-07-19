@@ -101,9 +101,9 @@ impl Store for FlashStore {
         self.journal.wifi_ssid()
     }
     fn now(&self) -> u64 {
-        // TODO(clock): GNSS-disciplined RTC. Until the clock task lands, event
-        // timestamps are 0 — the server records receive-time regardless.
-        0
+        // RTC UTC once disciplined by the GNSS; 0 on a cold clock (the server
+        // records receive-time regardless).
+        crate::clock::now_unix().unwrap_or(0)
     }
 }
 
