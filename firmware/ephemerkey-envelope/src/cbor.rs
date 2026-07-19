@@ -158,6 +158,14 @@ impl<'a> Dec<'a> {
         }
     }
 
+    pub fn tstr(&mut self) -> Result<&'a str, Error> {
+        match self.head()? {
+            (3, len) => core::str::from_utf8(self.take(len as usize)?)
+                .map_err(|_| Error::Malformed),
+            _ => Err(Error::Malformed),
+        }
+    }
+
     pub fn array(&mut self) -> Result<u64, Error> {
         match self.head()? {
             (4, len) => Ok(len),

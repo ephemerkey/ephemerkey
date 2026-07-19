@@ -31,6 +31,8 @@ use ephemerkey_core::reveal::{DisplayMode, DisplaySpec, GenKey, Generator, OnceM
 use serde::Deserialize;
 use std::io::BufRead;
 
+mod serial;
+
 // ---------------------------------------------------------------- scenario
 
 #[derive(Deserialize)]
@@ -644,8 +646,18 @@ fn describe_check(c: ReceiptCheck) -> String {
 fn main() {
     let arg = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("usage: ekemu <scenario.json>  (commands on stdin)");
+        eprintln!("       ekemu serial <state.json> [listen_addr]");
         std::process::exit(2);
     });
+    if arg == "serial" {
+        let state = std::env::args().nth(2).unwrap_or_else(|| {
+            eprintln!("usage: ekemu serial <state.json> [listen_addr]");
+            std::process::exit(2);
+        });
+        let listen = std::env::args().nth(3).unwrap_or_else(|| "127.0.0.1:8422".into());
+        serial::run(&state, &listen);
+        return;
+    }
     let scn: Scenario =
         serde_json::from_str(&std::fs::read_to_string(&arg).expect("read scenario"))
             .expect("parse scenario");
