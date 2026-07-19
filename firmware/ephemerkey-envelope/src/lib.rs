@@ -175,8 +175,61 @@ fn encrypt0_protected(buf: &mut [u8], seq: u64, target: &[u8]) -> Result<usize, 
     Ok(e.len())
 }
 
-/// Seal `plaintext` (normally a COSE_Sign1) to `device_kx_pub`. The caller
-/// supplies the ephemeral secret and IV (randomness is external by design).
+/// AES-128-GCM backend. The whole envelope is portable and hardware-agnostic
+/// except this one primitive: the host, emulator, and server all use
+/// [`SoftAesGcm`] (the RustCrypto `aes-gcm` crate), while the device can inject
+/// a hardware-accelerated impl (the STM32U0 AES engine) via the `*_with`
+/// entry points. The wire bytes are identical either way — GCM is GCM — so a
+/// blob sealed by one is opened by any other; only *who computes it* changes.
+pub trait AesGcm128 {
+    /// Encrypt `buf` in place (plaintext -> ciphertext), returning the 16-byte
+    /// tag over `aad ‖ ciphertext`.
+    fn seal(&mut self, key: &[u8; 16], iv: &[u8; 12], aad: &[u8], buf: &mut [u8]) -> [u8; 16];
+    /// Decrypt `buf` in place (ciphertext -> plaintext) and verify `tag`
+    /// (constant time). `Err(())` on authentication failure.
+    fn open(
+        &mut self,
+        key: &[u8; 16],
+        iv: &[u8; 12],
+        aad: &[u8],
+        buf: &mut [u8],
+        tag: &[u8; 16],
+    ) -> Result<(), ()>;
+}
+
+/// Portable software AES-128-GCM (RustCrypto). The default backend everywhere
+/// except device firmware that opts into the hardware engine.
+#[derive(Default, Clone, Copy)]
+pub struct SoftAesGcm;
+
+impl AesGcm128 for SoftAesGcm {
+    fn seal(&mut self, key: &[u8; 16], iv: &[u8; 12], aad: &[u8], buf: &mut [u8]) -> [u8; 16] {
+        let cipher = Aes128Gcm::new(key.into());
+        // GCM encryption only fails when the message exceeds 2^36 bytes; our
+        // configs are a few KiB, so this is unreachable.
+        let tag = cipher
+            .encrypt_in_place_detached(Nonce::from_slice(iv), aad, buf)
+            .expect("gcm encrypt (message under size limit)");
+        tag.into()
+    }
+    fn open(
+        &mut self,
+        key: &[u8; 16],
+        iv: &[u8; 12],
+        aad: &[u8],
+        buf: &mut [u8],
+        tag: &[u8; 16],
+    ) -> Result<(), ()> {
+        let cipher = Aes128Gcm::new(key.into());
+        cipher
+            .decrypt_in_place_detached(Nonce::from_slice(iv), aad, buf, Tag::from_slice(tag))
+            .map_err(|_| ())
+    }
+}
+
+/// Seal `plaintext` (normally a COSE_Sign1) to `device_kx_pub` with the
+/// software backend. The caller supplies the ephemeral secret and IV
+/// (randomness is external by design).
 pub fn seal_write(
     out: &mut [u8],
     plaintext: &[u8],
@@ -185,6 +238,21 @@ pub fn seal_write(
     target: &[u8],
     eph_secret: &[u8; 32],
     iv: &[u8; 12],
+) -> Result<usize, Error> {
+    seal_write_with(out, plaintext, device_kx_pub, seq, target, eph_secret, iv, &mut SoftAesGcm)
+}
+
+/// [`seal_write`] with a caller-chosen AES-GCM backend.
+#[allow(clippy::too_many_arguments)]
+pub fn seal_write_with(
+    out: &mut [u8],
+    plaintext: &[u8],
+    device_kx_pub: &[u8; 32],
+    seq: u64,
+    target: &[u8],
+    eph_secret: &[u8; 32],
+    iv: &[u8; 12],
+    aes: &mut impl AesGcm128,
 ) -> Result<usize, Error> {
     let eph = KxSecret::from(*eph_secret);
     let eph_pub = KxPublic::from(&eph);
@@ -209,10 +277,7 @@ pub fn seal_write(
 
     let (ct, tag_out) = out[ct_range].split_at_mut(plaintext.len());
     ct.copy_from_slice(plaintext);
-    let cipher = Aes128Gcm::new((&key).into());
-    let tag = cipher
-        .encrypt_in_place_detached(Nonce::from_slice(iv), &aad[..alen], ct)
-        .map_err(|_| Error::DecryptFailed)?;
+    let tag = aes.seal(&key, iv, &aad[..alen], ct);
     tag_out.copy_from_slice(&tag);
     Ok(total)
 }
@@ -254,6 +319,16 @@ pub fn open(
     out: &mut [u8],
     kx_secret: &[u8; 32],
 ) -> Result<(usize, u64), Error> {
+    open_with(blob, out, kx_secret, &mut SoftAesGcm)
+}
+
+/// [`open`] with a caller-chosen AES-GCM backend.
+pub fn open_with(
+    blob: &[u8],
+    out: &mut [u8],
+    kx_secret: &[u8; 32],
+    aes: &mut impl AesGcm128,
+) -> Result<(usize, u64), Error> {
     let mut d = Dec::new(blob);
     if d.array()? != 3 {
         return Err(Error::Malformed);
@@ -290,11 +365,10 @@ pub fn open(
     let alen = enc_structure(&mut aad, protected)?;
 
     let (ct_body, tag) = ct.split_at(ct.len() - 16);
+    let tag: &[u8; 16] = tag.try_into().map_err(|_| Error::Malformed)?;
     let pt = out.get_mut(..ct_body.len()).ok_or(Error::BufferTooSmall)?;
     pt.copy_from_slice(ct_body);
-    let cipher = Aes128Gcm::new((&key).into());
-    cipher
-        .decrypt_in_place_detached(Nonce::from_slice(iv), &aad[..alen], pt, Tag::from_slice(tag))
+    aes.open(&key, iv, &aad[..alen], pt, tag)
         .map_err(|_| Error::DecryptFailed)?;
     Ok((ct_body.len(), seq))
 }

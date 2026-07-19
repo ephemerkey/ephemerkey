@@ -65,9 +65,10 @@ struct Xfer {
     crc: u32,
 }
 
-pub struct Provisioner<S: Store> {
+pub struct Provisioner<S: Store, A: env::AesGcm128 = env::SoftAesGcm> {
     pub store: S,
     id: Identity,
+    aes: A,
     parser: Parser,
     xfer: Option<Xfer>,
     cfg_buf: [u8; CONFIG_MAX],
@@ -88,11 +89,21 @@ fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
-impl<S: Store> Provisioner<S> {
+impl<S: Store, A: env::AesGcm128 + Default> Provisioner<S, A> {
+    /// Build with the default (software) AES-GCM backend.
     pub fn new(id: Identity, store: S) -> Self {
+        Self::new_with_aes(id, store, A::default())
+    }
+}
+
+impl<S: Store, A: env::AesGcm128> Provisioner<S, A> {
+    /// Build with a caller-supplied AES-GCM backend (e.g. the device's
+    /// hardware engine).
+    pub fn new_with_aes(id: Identity, store: S, aes: A) -> Self {
         Provisioner {
             store,
             id,
+            aes,
             parser: Parser::new(),
             xfer: None,
             cfg_buf: [0; CONFIG_MAX],
@@ -236,7 +247,9 @@ impl<S: Store> Provisioner<S> {
         if x.filled != x.len || crc32(&self.cfg_buf[..x.len]) != x.crc {
             return err(resp, err_code::CRC);
         }
-        let Ok((ilen, seq)) = env::open(&self.cfg_buf[..x.len], &mut self.pt_buf, &self.id.kx_priv) else {
+        let Ok((ilen, seq)) =
+            env::open_with(&self.cfg_buf[..x.len], &mut self.pt_buf, &self.id.kx_priv, &mut self.aes)
+        else {
             return err(resp, err_code::BAD_SIG);
         };
         if seq != x.seq_hint as u64 {

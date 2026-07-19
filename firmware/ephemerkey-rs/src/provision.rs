@@ -108,6 +108,12 @@ impl Store for FlashStore {
 }
 
 /// Build the provisioning engine from a persisted identity and flash store.
+///
+/// Uses the software AES-GCM backend. The engine is generic over the backend
+/// (`Provisioner<S, A>`) so the STM32U0 AES engine could be dropped in here via
+/// `Provisioner::new_with_aes` — but embassy-stm32 0.6 has no driver for the
+/// U0's AES v2 peripheral (it only implements aes_v3b), so that awaits either
+/// newer embassy support or a hardware-verified raw-PAC backend.
 pub fn provisioner(id: StoredIdentity, journal: DeviceJournal) -> Provisioner<FlashStore> {
     let identity = Identity {
         device_id: id.device_id,
