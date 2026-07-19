@@ -253,6 +253,23 @@ impl Device {
             Err(_) => return err(err_code::BAD_SIG),
         };
 
+        // Critical-feature check: refuse configs that depend on protections
+        // this build doesn't implement (never silently weaken).
+        if let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&config) {
+            if let Some(crit) = doc.get("crit").and_then(|c| c.as_array()) {
+                let known = crate::known_features();
+                for c in crit {
+                    let Some(name) = c.as_str() else {
+                        return err(err_code::BAD_STATE);
+                    };
+                    if !known.contains(&name) {
+                        eprintln!("ekemu serial: refusing config — unsupported critical feature '{name}'");
+                        return err(err_code::UNSUPPORTED);
+                    }
+                }
+            }
+        }
+
         self.st.owner_pub = Some(owner_hex);
         self.st.seq = seq;
         self.st.config_b64 = Some(b64(&config));

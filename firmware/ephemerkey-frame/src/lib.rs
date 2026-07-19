@@ -35,6 +35,9 @@ pub mod err_code {
     pub const WRONG_SET: u8 = 4;
     pub const STORAGE: u8 = 5;
     pub const CRC: u8 = 6;
+    /// The config names a critical feature this firmware doesn't implement.
+    /// Refusing outright beats silently not enforcing a protection.
+    pub const UNSUPPORTED: u8 = 7;
 }
 
 pub fn crc16(data: &[u8]) -> u16 {

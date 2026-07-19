@@ -43,6 +43,10 @@ struct Scenario {
     seed: u32,
     keys: Vec<KeyCfg>,
     slots: Vec<SlotCfg>,
+    /// Critical features this config depends on: every entry must be in
+    /// KNOWN_FEATURES or the scenario/config is refused outright.
+    #[serde(default)]
+    crit: Vec<String>,
     /// The lock's own confirm-TOTP identity (receipts it mints on every
     /// fire/relock). Absent = the lock stays silent.
     confirm: Option<ConfirmCfg>,
@@ -218,7 +222,21 @@ fn default_delay_max() -> u16 {
     60
 }
 
+/// Everything this emulated device implements (policy features from the
+/// shared engine + the platform gates the virtual env provides).
+pub fn known_features() -> Vec<&'static str> {
+    let mut f = ephemerkey_core::SUPPORTED_POLICY_FEATURES.to_vec();
+    f.extend(["zones", "calendars"]);
+    f
+}
+
 fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
+    for c in &scn.crit {
+        assert!(
+            known_features().contains(&c.as_str()),
+            "config requires unsupported critical feature '{c}' — refusing"
+        );
+    }
     let mut lock = LockEngine::new();
     let mut gen = Generator::new();
 

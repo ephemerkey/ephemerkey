@@ -43,6 +43,36 @@ pub fn ack_decode(payload: &[u8]) -> Result<(u64, [u8; 32]), Error> {
     Ok((seq.ok_or(Error::Malformed)?, hash))
 }
 
+/// Enrollment doc payload (the serial IDENTITY frame's Sign1 body):
+/// `{1: device_id, 2: sign_pub, 3: kx_pub, 4: fw}`.
+pub struct Enrollment<'a> {
+    pub device_id: &'a [u8],
+    pub sign_pub: &'a [u8],
+    pub kx_pub: &'a [u8],
+    pub fw: &'a str,
+}
+
+pub fn enrollment_decode(payload: &[u8]) -> Result<Enrollment<'_>, Error> {
+    let mut d = Dec::new(payload);
+    let n = d.map()?;
+    let (mut device_id, mut sign_pub, mut kx_pub, mut fw) = (None, None, None, "");
+    for _ in 0..n {
+        match d.uint()? {
+            1 => device_id = Some(d.bstr()?),
+            2 => sign_pub = Some(d.bstr()?),
+            3 => kx_pub = Some(d.bstr()?),
+            4 => fw = d.tstr()?,
+            _ => d.skip()?,
+        }
+    }
+    match (device_id, sign_pub, kx_pub) {
+        (Some(device_id), Some(sign_pub), Some(kx_pub)) => {
+            Ok(Enrollment { device_id, sign_pub, kx_pub, fw })
+        }
+        _ => Err(Error::Malformed),
+    }
+}
+
 /// One telemetry event: `{1: seq, 3: rtc_ts, 4: type, 5: detail?, 6: chain_tag?}`.
 #[derive(Debug, Clone, Copy)]
 pub struct Event<'a> {

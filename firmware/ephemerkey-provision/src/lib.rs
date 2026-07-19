@@ -36,6 +36,13 @@ const EVENT_RING: usize = 8;
 pub trait Store {
     fn owner_pub(&self) -> Option<[u8; 32]>;
     fn seq(&self) -> u64;
+    /// Inspect a fully verified config BEFORE it is committed — the place
+    /// to enforce the `crit` feature list (reject anything naming a
+    /// critical feature this build doesn't implement; never silently skip
+    /// a protection). Default accepts everything.
+    fn validate_config(&self, _config: &[u8]) -> Result<(), ()> {
+        Ok(())
+    }
     fn commit(&mut self, owner_pub: &[u8; 32], seq: u64, config: &[u8]) -> Result<(), ()>;
     fn wifi_set(&mut self, ssid: &str, psk: &str) -> Result<(), ()>;
     fn wifi_clear(&mut self) -> Result<(), ()>;
@@ -267,6 +274,9 @@ impl<S: Store> Provisioner<S> {
         let blob_hash: [u8; 32] = Sha256::digest(&self.cfg_buf[..x.len]).into();
         {
             let (pt, _) = self.pt_buf.split_at(config_len);
+            if self.store.validate_config(pt).is_err() {
+                return err(resp, err_code::UNSUPPORTED);
+            }
             if self.store.commit(&owner_bytes, seq, pt).is_err() {
                 return err(resp, err_code::STORAGE);
             }
@@ -402,7 +412,7 @@ mod tests {
         Provisioner::new(id, MemStore { owner: None, seq: 0, config: vec![], ssid: None })
     }
 
-    fn roundtrip(p: &mut Provisioner<MemStore>, ftype: u8, payload: &[u8]) -> (u8, Vec<u8>) {
+    fn roundtrip<S: Store>(p: &mut Provisioner<S>, ftype: u8, payload: &[u8]) -> (u8, Vec<u8>) {
         let mut wire = [0u8; 1100];
         let n = encode(&mut wire, ftype, payload).unwrap();
         let mut frames = Vec::new();
@@ -422,7 +432,7 @@ mod tests {
         sealed[..slen].to_vec()
     }
 
-    fn push(p: &mut Provisioner<MemStore>, blob: &[u8], seq: u32) -> (u8, Vec<u8>) {
+    fn push<S: Store>(p: &mut Provisioner<S>, blob: &[u8], seq: u32) -> (u8, Vec<u8>) {
         let mut begin = [0u8; 10];
         begin[..2].copy_from_slice(&(blob.len() as u16).to_le_bytes());
         begin[2..6].copy_from_slice(&seq.to_le_bytes());
@@ -495,6 +505,60 @@ mod tests {
         let (t, _) = push(&mut p, &blob3, 3);
         assert_eq!(t, ftt::CONFIG_ACK);
         assert_eq!(p.store.seq, 3);
+    }
+
+    #[test]
+    fn crit_rejecting_store_yields_unsupported() {
+        struct Picky(MemStore);
+        impl Store for Picky {
+            fn owner_pub(&self) -> Option<[u8; 32]> {
+                self.0.owner_pub()
+            }
+            fn seq(&self) -> u64 {
+                self.0.seq()
+            }
+            fn validate_config(&self, config: &[u8]) -> Result<(), ()> {
+                // stand-in for a real crit-list check
+                if config.windows(8).any(|w| w == br#""crit":["#) {
+                    Err(())
+                } else {
+                    Ok(())
+                }
+            }
+            fn commit(&mut self, o: &[u8; 32], s: u64, c: &[u8]) -> Result<(), ()> {
+                self.0.commit(o, s, c)
+            }
+            fn wifi_set(&mut self, s: &str, p: &str) -> Result<(), ()> {
+                self.0.wifi_set(s, p)
+            }
+            fn wifi_clear(&mut self) -> Result<(), ()> {
+                self.0.wifi_clear()
+            }
+            fn wifi_ssid(&self) -> Option<&str> {
+                self.0.wifi_ssid()
+            }
+            fn now(&self) -> u64 {
+                self.0.now()
+            }
+        }
+        let id = Identity {
+            device_id: [0xd; 12],
+            sign: env::SigningKey::from_bytes(&[11; 32]),
+            kx_priv: [13; 32],
+            fw: "test-0.1",
+        };
+        let mut p = Provisioner::new(id, Picky(MemStore { owner: None, seq: 0, config: vec![], ssid: None }));
+        let kx_pub = test_kx_pub(&[13; 32]);
+        let owner = env::SigningKey::from_bytes(&[21; 32]);
+
+        let ok_blob = seal_config(&owner, &kx_pub, 1, br#"{"role":2}"#);
+        assert_eq!(push(&mut p, &ok_blob, 1).0, ftt::CONFIG_ACK);
+
+        let bad = seal_config(&owner, &kx_pub, 2, br#"{"role":2,"crit":["time-travel"]}"#);
+        let (t, e) = push(&mut p, &bad, 2);
+        assert_eq!((t, e[0]), (ftt::ERROR, err_code::UNSUPPORTED));
+        // the rejected config must NOT have been committed
+        assert_eq!(p.store.0.seq, 1);
     }
 
     #[test]
