@@ -14,4 +14,14 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=--nmagic");
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+
+    // `oled` = the generator drives the SSD1306. The 512-byte framebuffer does
+    // not co-fit with the experimental hw-aes scratch in the 40 KB SRAM, so the
+    // bench hw-aes build omits the display (bench AES bring-up needs no OLED).
+    println!("cargo:rustc-check-cfg=cfg(oled)");
+    let display = env::var_os("CARGO_FEATURE_DISPLAY").is_some();
+    let hw_aes = env::var_os("CARGO_FEATURE_HW_AES").is_some();
+    if display && !hw_aes {
+        println!("cargo:rustc-cfg=oled");
+    }
 }

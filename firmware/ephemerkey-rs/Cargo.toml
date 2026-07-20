@@ -51,11 +51,18 @@ ephemerkey-frame = { path = "../ephemerkey-frame" }
 ephemerkey-store = { path = "../ephemerkey-store" }
 # Sealed-config CBOR → policy engine (shared with the emulator, host-tested).
 ephemerkey-config = { path = "../ephemerkey-config", features = ["defmt"] }
+# Generator display model (View -> Screen); the emulator renders the same crate.
+ephemerkey-ui = { path = "../ephemerkey-ui" }
 # NMEA RMC parsing for GNSS RTC discipline (host-tested); only with `gnss`.
 ephemerkey-nmea = { path = "../ephemerkey-nmea", optional = true }
 
 # USB CDC-ACM transport for the provisioning console (feature `usb-provision`).
 embassy-usb = { version = "0.6", default-features = false, features = ["defmt"], optional = true }
+
+# OLED (SSD1306 128x32 on I2C1) — the generator's dial/reveal display (feature
+# `display`). embedded-graphics supplies the glyphs; ephemerkey-ui the layout.
+ssd1306 = { version = "0.9", optional = true }
+embedded-graphics = { version = "0.8", optional = true }
 
 [features]
 # Exactly one board must be selected; it pulls in the embassy chip feature and
@@ -72,6 +79,7 @@ board-ephemerkey = [
     "sensors",
     "buzzer",
     "usb-provision",
+    "display",
 ]
 board-nucleo-u083 = [
     "embassy-stm32/stm32u083rc",
@@ -88,6 +96,9 @@ buzzer = []
 
 # Provisioning transport over USB FS CDC-ACM (button-gated).
 usb-provision = ["dep:embassy-usb"]
+
+# SSD1306 OLED on I2C1 for the generator display (product board).
+display = ["dep:ssd1306", "dep:embedded-graphics"]
 
 # Open sealed configs on the STM32U0 hardware AES engine (raw-PAC aes_v2) rather
 # than software AES-GCM. OFF BY DEFAULT: the driver (src/pacaes.rs) is not yet

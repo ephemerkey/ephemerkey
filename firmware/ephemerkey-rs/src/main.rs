@@ -52,6 +52,8 @@ mod usbprov;
 
 #[cfg(feature = "buzzer")]
 mod buzzer;
+#[cfg(oled)]
+mod display;
 #[cfg(feature = "gnss")]
 mod generator;
 #[cfg(feature = "gnss")]
@@ -158,11 +160,12 @@ async fn main(spawner: Spawner) {
     // The identity/journal aren't consumed by a running task here — drop them.
     let _ = (journal, identity);
 
-    // Subsystems common to both personalities (product board only).
+    // Subsystems common to both personalities (product board only). The I2C1
+    // sensor bus is NOT here: it is claimed per role — the generator drives the
+    // OLED on it, the lock controller the accelerometer. (A shared-bus split so
+    // the generator also gets the accel is a later step.)
     #[cfg(feature = "wifi")]
     spawner.spawn(wifi::task(p.LPUART1, p.PA2, p.PA3, p.PB5).unwrap());
-    #[cfg(feature = "sensors")]
-    spawner.spawn(sensors::task(p.I2C1, p.PB6, p.PB7, p.PB3, p.PA8, p.EXTI3, p.EXTI8).unwrap());
     #[cfg(feature = "buzzer")]
     spawner.spawn(buzzer::task(p.TIM3, p.PB4).unwrap());
 
@@ -188,14 +191,30 @@ async fn main(spawner: Spawner) {
                 center: Input::new(p.PA15, Pull::Up),
                 right: Input::new(p.PF3, Pull::Down),
             };
+            // The dial/reveal OLED on the I2C1 sensor bus (0x3C). `None` if the
+            // panel isn't populated — the generator still runs, logging.
+            #[cfg(oled)]
+            let oled = {
+                let mut ic = embassy_stm32::i2c::Config::default();
+                ic.frequency = embassy_stm32::time::Hertz::khz(400);
+                display::Oled::new(embassy_stm32::i2c::I2c::new_blocking(p.I2C1, p.PB6, p.PB7, ic))
+            };
+            #[cfg(not(oled))]
+            let oled = ();
             spawner.spawn(
-                generator::task(gen, ritual, cfg.calendars(), cfg.unlock_window_s, buttons).unwrap(),
+                generator::task(gen, ritual, cfg.calendars(), cfg.unlock_window_s, buttons, oled)
+                    .unwrap(),
             );
         }
         #[cfg(feature = "lock")]
         config::Role::LockController => {
             // The actuator bus (stub) + the validation engine, fed codes over
-            // the USB console (stand-in for the LOCK I2C code path).
+            // the USB console (stand-in for the LOCK I2C code path). The lock
+            // claims the I2C1 sensor bus for the accelerometer (tamper / own-
+            // fence stillness).
+            #[cfg(feature = "sensors")]
+            spawner
+                .spawn(sensors::task(p.I2C1, p.PB6, p.PB7, p.PB3, p.PA8, p.EXTI3, p.EXTI8).unwrap());
             spawner.spawn(lock::task(p.I2C3, p.PA7, p.PA6).unwrap());
             #[cfg(feature = "usb-provision")]
             {
