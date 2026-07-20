@@ -22,13 +22,11 @@
 //!   echo <text> | # ...     narration / comments
 //!   quit
 
-use ephemerkey_core::engine::{KeyDef, LockEngine, Outcome};
-use ephemerkey_core::policy::{
-    Action, Gates, NegativeAction, Policy, Sensors, Slot, MAX_PATH_LEGS, MAX_QUORUM,
-};
-use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Receipts, Validator};
+use ephemerkey_core::engine::{LockEngine, Outcome};
+use ephemerkey_core::policy::{Action, Sensors};
+use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Validator};
 use ephemerkey_core::totp::Code;
-use ephemerkey_core::reveal::{ChainErr, ChainSpec, DisplayMode, DisplaySpec, GenKey, Generator, OnceMode, RevealErr};
+use ephemerkey_core::reveal::{ChainErr, DisplayMode, Generator, RevealErr};
 use serde::Deserialize;
 use std::io::BufRead;
 
@@ -268,6 +266,12 @@ pub fn known_features() -> Vec<&'static str> {
     f
 }
 
+/// Build the generator + lock + remote validator from a scenario — by
+/// ENCODING the scenario to the pinned integer-keyed CBOR config and running it
+/// back through the shared `ephemerkey-config` decoder/builder, exactly as the
+/// firmware does on a sealed config. So the emulator exercises the same CBOR
+/// path the device ships (no separate mapping to drift out of sync), and its
+/// simulation genuinely runs on CBOR data.
 fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
     for c in &scn.crit {
         assert!(
@@ -275,159 +279,283 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
             "config requires unsupported critical feature '{c}' — refusing"
         );
     }
-    let mut lock = LockEngine::new();
-    let mut gen = Generator::new();
+    let cbor = scenario_to_cbor(scn);
+    let model = ephemerkey_config::parse(&cbor, &known_features())
+        .expect("scenario → cbor → model");
+    (
+        ephemerkey_config::build_generator(&model),
+        ephemerkey_config::build_lock(&model),
+        ephemerkey_config::build_validator(&model),
+    )
+}
 
-    for (i, k) in scn.keys.iter().enumerate() {
-        let mut kd = KeyDef::new(k.secret.as_bytes(), k.digits);
-        kd.decoy = k.decoy;
-        lock.keys[i] = Some(kd);
-        if k.display.is_some() || k.chain.is_some() {
-            let decoy_kd = k.decoy.map(|di| {
-                let dk = &scn.keys[di as usize];
-                KeyDef::new(dk.secret.as_bytes(), dk.digits)
-            });
-            let display = match &k.display {
-                Some(d) => DisplaySpec {
-                    mode: match d.mode {
-                        ModeCfg::Plain => DisplayMode::Plain,
-                        ModeCfg::Scatter => DisplayMode::Scatter,
-                    },
-                    dwell_ms: d.dwell_ms,
-                    reveal_s: d.reveal_s,
-                    once: match d.once {
-                        OnceCfg::Unlimited => OnceMode::Unlimited,
-                        OnceCfg::Refuse => OnceMode::Refuse,
-                        OnceCfg::Decoy => OnceMode::Decoy,
-                    },
-                    gap_min_s: d.gap_min_s,
-                },
-                None => DisplaySpec {
-                    mode: DisplayMode::Plain,
-                    dwell_ms: 800,
-                    reveal_s: 5,
-                    once: OnceMode::Unlimited,
-                    gap_min_s: 0,
-                },
-            };
-            let chain = k.chain.as_ref().map(|c| {
-                let mut validator =
-                    Validator::new(c.secret.as_bytes(), c.digits, ReceiptMode::from(c.mode));
-                validator.time_window_s = c.max_age_s;
-                ChainSpec {
-                    validator,
-                    action: match c.action.as_str() {
-                        "unlock" => Action::Unlock,
-                        "duress" => Action::DuressUnlock,
-                        _ => Action::Lock,
-                    },
-                    min_elapsed_s: c.min_elapsed_s,
-                }
-            });
-            gen.keys[i] = Some(GenKey {
-                key: kd,
-                decoy: decoy_kd,
-                display,
-                chain,
-            });
+// ---- scenario → integer-keyed CBOR config (see ephemerkey_config schema) ---
+
+/// Encode a scenario as the sealed config the firmware parses. The role field
+/// is a placeholder (the emulator simulates both sides; the `build_*` functions
+/// ignore role), so only keys/slots/confirm/crit carry meaning here.
+fn scenario_to_cbor(scn: &Scenario) -> Vec<u8> {
+    use ephemerkey_envelope::cbor::Enc;
+    let mut buf = [0u8; 4096];
+    let mut e = Enc::new(&mut buf);
+    let mut top = 1u64; // role
+    top += !scn.keys.is_empty() as u64;
+    top += !scn.slots.is_empty() as u64;
+    top += scn.confirm.is_some() as u64;
+    top += !scn.crit.is_empty() as u64;
+    e.map(top).unwrap();
+    e.uint(1).unwrap();
+    e.uint(1).unwrap(); // placeholder role
+    if !scn.keys.is_empty() {
+        e.uint(4).unwrap();
+        e.array(scn.keys.len() as u64).unwrap();
+        for k in &scn.keys {
+            enc_key(&mut e, k);
         }
     }
-
-    for (i, s) in scn.slots.iter().enumerate() {
-        let negative = if s.negative == "silent" {
-            NegativeAction::Silent
-        } else if let Some(secs) = s.negative.strip_prefix("lockout:") {
-            NegativeAction::Lockout(secs.parse().expect("lockout secs"))
-        } else {
-            NegativeAction::Reset
-        };
-        lock.slots[i] = Some(Slot {
-            key: s.key,
-            policy: match &s.policy {
-                PolicyCfg::Always => Policy::AlwaysValid,
-                &PolicyCfg::Sequence {
-                    n,
-                    window_s,
-                    gap_min_s,
-                    gap_max_s,
-                    delay_min_s,
-                    delay_max_s,
-                    jitter_s,
-                } => Policy::Sequence {
-                    n,
-                    window_s,
-                    gap_min_s,
-                    gap_max_s,
-                    delay_min_s,
-                    delay_max_s,
-                    pace_jitter_s: jitter_s,
-                },
-                PolicyCfg::Path {
-                    leg_keys,
-                    leg_deadline_s,
-                    delay_max_s,
-                } => {
-                    assert!(leg_keys.len() >= 2 && leg_keys.len() <= MAX_PATH_LEGS);
-                    let mut lk = [0u8; MAX_PATH_LEGS];
-                    lk[..leg_keys.len()].copy_from_slice(leg_keys);
-                    Policy::Path {
-                        legs: leg_keys.len() as u8,
-                        leg_keys: lk,
-                        leg_deadline_s: *leg_deadline_s,
-                        delay_max_s: *delay_max_s,
-                    }
-                }
-                &PolicyCfg::DeadMan { beat_s } => Policy::DeadMan { beat_s },
-                PolicyCfg::Quorum {
-                    m,
-                    keys,
-                    window_s,
-                    alternating,
-                    gap_min_s,
-                    gap_max_s,
-                } => {
-                    assert!(keys.len() >= *m as usize && keys.len() <= MAX_QUORUM);
-                    let mut ks = [0u8; MAX_QUORUM];
-                    ks[..keys.len()].copy_from_slice(keys);
-                    Policy::Quorum {
-                        m: *m,
-                        n_keys: keys.len() as u8,
-                        keys: ks,
-                        window_s: *window_s,
-                        alternating: *alternating,
-                        gap_min_s: *gap_min_s,
-                        gap_max_s: *gap_max_s,
-                    }
-                }
-            },
-            veto_delay_s: s.veto_delay_s,
-            veto_key: s.veto_key,
-            budget: s.budget,
-            gates: Gates {
-                own_fence: s.gates.fence,
-                stillness_s: s.gates.stillness_s,
-                calendar: s.gates.calendar,
-            },
-            action: match s.action.as_str() {
-                "lock" => Action::Lock,
-                "duress" => Action::DuressUnlock,
-                _ => Action::Unlock,
-            },
-            show_progress: s.progress,
-            reset_on_invalid: s.reset_on_invalid,
-            negative,
-        });
+    if !scn.slots.is_empty() {
+        e.uint(5).unwrap();
+        e.array(scn.slots.len() as u64).unwrap();
+        for s in &scn.slots {
+            enc_slot(&mut e, s);
+        }
     }
+    if let Some(c) = &scn.confirm {
+        e.uint(7).unwrap();
+        e.map(3).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(c.secret.as_bytes()).unwrap();
+        e.uint(2).unwrap();
+        e.uint(c.digits as u64).unwrap();
+        e.uint(3).unwrap();
+        e.uint(mode_u(c.mode)).unwrap();
+    }
+    if !scn.crit.is_empty() {
+        e.uint(8).unwrap();
+        e.array(scn.crit.len() as u64).unwrap();
+        for c in &scn.crit {
+            e.tstr(c).unwrap();
+        }
+    }
+    let n = e.len();
+    buf[..n].to_vec()
+}
 
-    // The lock's confirm identity: the engine mints, a matching validator
-    // (a remote party holding the same secret) verifies what gets relayed.
-    let validator = scn.confirm.as_ref().map(|c| {
-        let mode: ReceiptMode = c.mode.into();
-        lock.receipts = Some(Receipts::new(c.secret.as_bytes(), c.digits, mode));
-        Validator::new(c.secret.as_bytes(), c.digits, mode)
-    });
+fn enc_key(e: &mut ephemerkey_envelope::cbor::Enc<'_>, k: &KeyCfg) {
+    let mut cnt = 2u64; // secret + digits
+    cnt += k.decoy.is_some() as u64;
+    cnt += k.display.is_some() as u64;
+    cnt += k.chain.is_some() as u64;
+    e.map(cnt).unwrap();
+    e.uint(1).unwrap();
+    e.bstr(k.secret.as_bytes()).unwrap();
+    e.uint(2).unwrap();
+    e.uint(k.digits as u64).unwrap();
+    if let Some(d) = k.decoy {
+        e.uint(3).unwrap();
+        e.uint(d as u64).unwrap();
+    }
+    if let Some(d) = &k.display {
+        e.uint(4).unwrap();
+        e.map(5).unwrap();
+        e.uint(1).unwrap();
+        e.uint(match d.mode {
+            ModeCfg::Plain => 0,
+            ModeCfg::Scatter => 1,
+        })
+        .unwrap();
+        e.uint(2).unwrap();
+        e.uint(d.dwell_ms as u64).unwrap();
+        e.uint(3).unwrap();
+        e.uint(d.reveal_s as u64).unwrap();
+        e.uint(4).unwrap();
+        e.uint(match d.once {
+            OnceCfg::Unlimited => 0,
+            OnceCfg::Refuse => 1,
+            OnceCfg::Decoy => 2,
+        })
+        .unwrap();
+        e.uint(5).unwrap();
+        e.uint(d.gap_min_s as u64).unwrap();
+    }
+    if let Some(c) = &k.chain {
+        e.uint(5).unwrap();
+        e.map(6).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(c.secret.as_bytes()).unwrap();
+        e.uint(2).unwrap();
+        e.uint(c.digits as u64).unwrap();
+        e.uint(3).unwrap();
+        e.uint(mode_u(c.mode)).unwrap();
+        e.uint(4).unwrap();
+        e.uint(action_u(&c.action)).unwrap();
+        e.uint(5).unwrap();
+        e.uint(c.min_elapsed_s as u64).unwrap();
+        e.uint(6).unwrap();
+        e.uint(c.max_age_s as u64).unwrap();
+    }
+}
 
-    (gen, lock, validator)
+fn enc_slot(e: &mut ephemerkey_envelope::cbor::Enc<'_>, s: &SlotCfg) {
+    let mut cnt = 9u64; // fields 1-8 + 10
+    cnt += s.veto_key.is_some() as u64;
+    e.map(cnt).unwrap();
+    e.uint(1).unwrap();
+    e.uint(s.key as u64).unwrap();
+    e.uint(2).unwrap();
+    e.uint(action_u(&s.action)).unwrap();
+    e.uint(3).unwrap();
+    enc_policy(e, &s.policy);
+    e.uint(4).unwrap();
+    e.bool(s.progress).unwrap();
+    e.uint(5).unwrap();
+    e.bool(s.reset_on_invalid).unwrap();
+    e.uint(6).unwrap();
+    enc_negative(e, &s.negative);
+    e.uint(7).unwrap();
+    enc_gates(e, &s.gates);
+    e.uint(8).unwrap();
+    e.uint(s.veto_delay_s as u64).unwrap();
+    if let Some(vk) = s.veto_key {
+        e.uint(9).unwrap();
+        e.uint(vk as u64).unwrap();
+    }
+    e.uint(10).unwrap();
+    e.uint(s.budget as u64).unwrap();
+}
+
+fn enc_policy(e: &mut ephemerkey_envelope::cbor::Enc<'_>, p: &PolicyCfg) {
+    match p {
+        PolicyCfg::Always => {
+            e.map(1).unwrap();
+            e.uint(1).unwrap();
+            e.uint(0).unwrap();
+        }
+        PolicyCfg::Sequence {
+            n,
+            window_s,
+            gap_min_s,
+            gap_max_s,
+            delay_min_s,
+            delay_max_s,
+            jitter_s,
+        } => {
+            e.map(8).unwrap();
+            e.uint(1).unwrap();
+            e.uint(1).unwrap();
+            for (k, v) in [
+                (2, *n as u64),
+                (3, *window_s as u64),
+                (4, *gap_min_s as u64),
+                (5, *gap_max_s as u64),
+                (6, *delay_min_s as u64),
+                (7, *delay_max_s as u64),
+                (8, *jitter_s as u64),
+            ] {
+                e.uint(k).unwrap();
+                e.uint(v).unwrap();
+            }
+        }
+        PolicyCfg::Path {
+            leg_keys,
+            leg_deadline_s,
+            delay_max_s,
+        } => {
+            e.map(4).unwrap();
+            e.uint(1).unwrap();
+            e.uint(2).unwrap();
+            e.uint(2).unwrap();
+            e.array(leg_keys.len() as u64).unwrap();
+            for k in leg_keys {
+                e.uint(*k as u64).unwrap();
+            }
+            e.uint(3).unwrap();
+            e.uint(*leg_deadline_s as u64).unwrap();
+            e.uint(4).unwrap();
+            e.uint(*delay_max_s as u64).unwrap();
+        }
+        PolicyCfg::DeadMan { beat_s } => {
+            e.map(2).unwrap();
+            e.uint(1).unwrap();
+            e.uint(3).unwrap();
+            e.uint(2).unwrap();
+            e.uint(*beat_s as u64).unwrap();
+        }
+        PolicyCfg::Quorum {
+            m,
+            keys,
+            window_s,
+            alternating,
+            gap_min_s,
+            gap_max_s,
+        } => {
+            e.map(7).unwrap();
+            e.uint(1).unwrap();
+            e.uint(4).unwrap();
+            e.uint(2).unwrap();
+            e.uint(*m as u64).unwrap();
+            e.uint(3).unwrap();
+            e.array(keys.len() as u64).unwrap();
+            for k in keys {
+                e.uint(*k as u64).unwrap();
+            }
+            e.uint(4).unwrap();
+            e.uint(*window_s as u64).unwrap();
+            e.uint(5).unwrap();
+            e.bool(*alternating).unwrap();
+            e.uint(6).unwrap();
+            e.uint(*gap_min_s as u64).unwrap();
+            e.uint(7).unwrap();
+            e.uint(*gap_max_s as u64).unwrap();
+        }
+    }
+}
+
+fn enc_gates(e: &mut ephemerkey_envelope::cbor::Enc<'_>, g: &GatesCfg) {
+    let mut cnt = 1u64; // stillness always
+    cnt += g.fence.is_some() as u64;
+    cnt += g.calendar.is_some() as u64;
+    e.map(cnt).unwrap();
+    if let Some(f) = g.fence {
+        e.uint(1).unwrap();
+        e.uint(f as u64).unwrap();
+    }
+    e.uint(2).unwrap();
+    e.uint(g.stillness_s as u64).unwrap();
+    if let Some(c) = g.calendar {
+        e.uint(3).unwrap();
+        e.uint(c as u64).unwrap();
+    }
+}
+
+fn enc_negative(e: &mut ephemerkey_envelope::cbor::Enc<'_>, s: &str) {
+    if s == "silent" {
+        e.array(1).unwrap();
+        e.uint(1).unwrap();
+    } else if let Some(secs) = s.strip_prefix("lockout:") {
+        e.array(2).unwrap();
+        e.uint(2).unwrap();
+        e.uint(secs.parse::<u64>().expect("lockout secs")).unwrap();
+    } else {
+        e.array(1).unwrap();
+        e.uint(0).unwrap();
+    }
+}
+
+fn action_u(s: &str) -> u64 {
+    match s {
+        "lock" => 1,
+        "duress" => 2,
+        _ => 0, // unlock
+    }
+}
+
+fn mode_u(m: ReceiptModeCfg) -> u64 {
+    match m {
+        ReceiptModeCfg::Sequence => 0,
+        ReceiptModeCfg::Time => 1,
+        ReceiptModeCfg::Both => 2,
+    }
 }
 
 // ------------------------------------------------------------------- env

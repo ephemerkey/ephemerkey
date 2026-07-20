@@ -49,6 +49,8 @@ ephemerkey-envelope = { path = "../ephemerkey-envelope", features = ["defmt"] }
 ephemerkey-frame = { path = "../ephemerkey-frame" }
 # Persistent flash journal (identity page + ping-pong config record), host-tested.
 ephemerkey-store = { path = "../ephemerkey-store" }
+# Sealed-config CBOR → policy engine (shared with the emulator, host-tested).
+ephemerkey-config = { path = "../ephemerkey-config", features = ["defmt"] }
 # NMEA RMC parsing for GNSS RTC discipline (host-tested); only with `gnss`.
 ephemerkey-nmea = { path = "../ephemerkey-nmea", optional = true }
 

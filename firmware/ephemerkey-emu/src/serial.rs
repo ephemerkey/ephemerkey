@@ -85,27 +85,6 @@ fn now() -> u64 {
         .as_secs()
 }
 
-/// Extract the `crit` feature list (key 8) from an integer-keyed CBOR config.
-/// `Some(vec)` on well-formed CBOR (empty when the key is absent); `None` if
-/// the config isn't a valid CBOR map — the device rejects that as BAD_STATE.
-fn config_crit(config: &[u8]) -> Option<Vec<String>> {
-    let mut d = env::cbor::Dec::new(config);
-    let n = d.map().ok()?;
-    for _ in 0..n {
-        let key = d.uint().ok()?;
-        if key == 8 {
-            let cn = d.array().ok()?;
-            let mut out = Vec::with_capacity(cn as usize);
-            for _ in 0..cn {
-                out.push(d.tstr().ok()?.to_string());
-            }
-            return Some(out);
-        }
-        d.skip().ok()?;
-    }
-    Some(Vec::new())
-}
-
 struct Device {
     st: State,
     path: String,
@@ -274,17 +253,19 @@ impl Device {
             Err(_) => return err(err_code::BAD_SIG),
         };
 
-        // Critical-feature check: refuse configs that depend on protections
-        // this build doesn't implement (never silently weaken). The config is
-        // integer-keyed CBOR (ephemerkey-envelope::config); `crit` is key 8.
-        let Some(crit) = config_crit(&config) else {
-            return err(err_code::BAD_STATE); // not well-formed CBOR
-        };
-        let known = crate::known_features();
-        for name in &crit {
-            if !known.contains(&name.as_str()) {
-                eprintln!("ekemu serial: refusing config — unsupported critical feature '{name}'");
+        // Fully parse the pushed integer-keyed CBOR config through the SAME
+        // decoder the firmware uses (ephemerkey-config): this validates the
+        // whole policy structure and enforces the `crit` list against what this
+        // device implements — never silently accept a config it can't honor.
+        match ephemerkey_config::parse(&config, &crate::known_features()) {
+            Ok(_) => {}
+            Err(ephemerkey_config::Error::Unsupported) => {
+                eprintln!("ekemu serial: refusing config — unsupported critical feature");
                 return err(err_code::UNSUPPORTED);
+            }
+            Err(e) => {
+                eprintln!("ekemu serial: refusing malformed config ({e:?})");
+                return err(err_code::BAD_STATE);
             }
         }
 

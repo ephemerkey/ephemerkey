@@ -51,9 +51,13 @@ mod usbprov;
 #[cfg(feature = "buzzer")]
 mod buzzer;
 #[cfg(feature = "gnss")]
+mod generator;
+#[cfg(feature = "gnss")]
 mod gnss;
 #[cfg(feature = "lock")]
 mod lock;
+#[cfg(all(feature = "lock", feature = "usb-provision"))]
+mod lockconsole;
 #[cfg(feature = "sensors")]
 mod sensors;
 #[cfg(feature = "wifi")]
@@ -134,11 +138,23 @@ async fn main(spawner: Spawner) {
     // --- Provisioning mode (button held at boot) ----------------------------
     // "Hold the provisioning button while connecting": only in that case do we
     // bring up the USB device and accept a sealed config. Otherwise the device
-    // is not even a USB peripheral — it cannot be silently rewritten.
+    // is not even a USB peripheral — it cannot be silently rewritten. Checked
+    // FIRST so this branch can diverge, leaving the USB peripheral free for the
+    // lock console on the normal path.
     #[cfg(feature = "usb-provision")]
-    let provisioning = prov_button.is_low();
-    #[cfg(not(feature = "usb-provision"))]
-    let _ = prov_button;
+    if prov_button.is_low() {
+        info!("entering USB provisioning mode");
+        spawner.spawn(usbprov::task(p.USB, p.PA12, p.PA11, p.AES, journal, identity).unwrap());
+        let mut led = status_led;
+        led.set_high(); // solid = provisioning
+        loop {
+            Timer::after_secs(3600).await;
+        }
+    }
+
+    // --- Normal run ---------------------------------------------------------
+    // The identity/journal aren't consumed by a running task here — drop them.
+    let _ = (journal, identity);
 
     // Subsystems common to both personalities (product board only).
     #[cfg(feature = "wifi")]
@@ -148,41 +164,38 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "buzzer")]
     spawner.spawn(buzzer::task(p.TIM3, p.PB4).unwrap());
 
-    // Role-specific pipeline (product board only; the Nucleo has neither GNSS
-    // nor the lock link wired, so both features are off there).
+    // Role-specific pipeline. The engine is built from the sealed config by the
+    // shared `ephemerkey-config` crate — the exact `Generator` / `LockEngine`
+    // the emulator runs. (Nucleo has neither GNSS nor the lock link, so both
+    // arms are off there and the device just blinks "searching".)
     match cfg.role {
         #[cfg(feature = "gnss")]
         config::Role::Generator => {
+            // GNSS disciplines the clock + drives the geofence gate; the
+            // generator task reveals key 0 on a button press when the gate is open.
             spawner.spawn(
-                gnss::task(cfg, p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1, p.PA0, p.EXTI0)
+                gnss::task(p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1, p.PA0, p.EXTI0)
                     .unwrap(),
             );
+            let gen = ephemerkey_config::build_generator(&cfg);
+            spawner.spawn(generator::task(gen, prov_button).unwrap());
         }
         #[cfg(feature = "lock")]
         config::Role::LockController => {
+            // The actuator bus (stub) + the validation engine, fed codes over
+            // the USB console (stand-in for the LOCK I2C code path).
             spawner.spawn(lock::task(p.I2C3, p.PA7, p.PA6).unwrap());
+            #[cfg(feature = "usb-provision")]
+            {
+                let engine = ephemerkey_config::build_lock(&cfg);
+                let _validator = ephemerkey_config::build_validator(&cfg);
+                spawner.spawn(lockconsole::task(p.USB, p.PA12, p.PA11, engine).unwrap());
+            }
         }
         #[allow(unreachable_patterns)]
         _ => {}
     }
 
-    #[cfg(feature = "usb-provision")]
-    if provisioning {
-        info!("entering USB provisioning mode");
-        spawner.spawn(usbprov::task(p.USB, p.PA12, p.PA11, p.AES, journal, identity).unwrap());
-        // Solid LED = provisioning; park here (the USB task owns the work). This
-        // branch diverges, so `status_led` is never needed by the heartbeat
-        // below on this path.
-        let mut led = status_led;
-        led.set_high();
-        loop {
-            Timer::after_secs(3600).await;
-        }
-    }
-
-    // Normal run. The identity/journal aren't consumed by a running task in this
-    // build path — drop them explicitly so there's no unused-binding noise.
-    let _ = (journal, identity);
     status_indicator(status_led).await;
 }
 

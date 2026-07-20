@@ -26,7 +26,7 @@ use embassy_stm32::usart::{self, UartRx};
 use embassy_stm32::{bind_interrupts, dma, interrupt, Peri};
 use embassy_time::Timer;
 
-use crate::{clock, config, gate};
+use crate::{clock, gate};
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<USART1>;
@@ -43,7 +43,6 @@ const LINE_MAX: usize = 96;
 
 #[embassy_executor::task]
 pub async fn task(
-    cfg: config::Config,
     uart: Peri<'static, USART1>,
     tx: Peri<'static, PA9>,
     rx: Peri<'static, PA10>,
@@ -86,7 +85,7 @@ pub async fn task(
     let mut ll = 0usize;
     loop {
         match select(rx.read_until_idle(&mut buf), pps.wait_for_rising_edge()).await {
-            Either::First(Ok(n)) => feed(&cfg, &buf[..n], &mut line, &mut ll),
+            Either::First(Ok(n)) => feed(&buf[..n], &mut line, &mut ll),
             Either::First(Err(e)) => warn!("gnss: rx error {}", e),
             Either::Second(()) => {
                 // PPS rising edge: the receiver is alive and marking the UTC
@@ -98,8 +97,9 @@ pub async fn task(
 }
 
 /// Accumulate UART bytes into NMEA lines; on each complete line, parse RMC and —
-/// on a valid fix — discipline the clock and latch geofence membership.
-fn feed(cfg: &config::Config, chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut usize) {
+/// on a valid fix — discipline the clock and latch geofence membership. The
+/// gate owns the zone table and does the fence test ([`gate::update_from_fix`]).
+fn feed(chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut usize) {
     for &b in chunk {
         if b == b'\n' || b == b'\r' {
             if *ll > 0 {
@@ -107,17 +107,15 @@ fn feed(cfg: &config::Config, chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut 
                     // A code may emit only from a valid fix INSIDE a fence. An
                     // invalid/void fix (or one outside every zone) closes the
                     // gate at once; the clock then ages out on its own.
-                    let in_fence = fix.valid && cfg.in_any_fence(fix.lat_e7, fix.lon_e7);
-                    gate::set_in_fence(in_fence);
+                    gate::update_from_fix(fix.valid, fix.lat_e7, fix.lon_e7);
                     if fix.valid {
                         clock::discipline_utc(fix.year, fix.month, fix.day, fix.hour, fix.min, fix.sec);
                         info!(
-                            "gnss: fix {}.{:07},{}.{:07} in_fence={}",
+                            "gnss: fix {}.{:07},{}.{:07}",
                             fix.lat_e7 / 10_000_000,
                             (fix.lat_e7 % 10_000_000).abs(),
                             fix.lon_e7 / 10_000_000,
                             (fix.lon_e7 % 10_000_000).abs(),
-                            in_fence,
                         );
                     }
                 }

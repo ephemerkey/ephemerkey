@@ -14,12 +14,14 @@
 //! disciplined and [`set_in_fence`] is called together on each fix. The gate
 //! itself just reads the latch and asks the clock whether it is still fresh.
 
+use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
 use embassy_time::Duration;
 
 use crate::clock;
-use crate::config;
+use crate::config::{self, Zone, MAX_ZONES};
 
 /// Whether the *last* GNSS fix was both valid and inside an authorized fence.
 /// A void fix, or a valid fix outside every fence, clears this immediately.
@@ -30,14 +32,35 @@ static IN_FENCE: AtomicBool = AtomicBool::new(false);
 /// defaults to the config crate's default until then.
 static STALENESS_S: AtomicU32 = AtomicU32::new(config::DEFAULT_STALENESS_S);
 
-/// Apply the sealed config to the gate — currently just the staleness window.
+/// The authorized geofence zones (copied from the sealed config at boot). The
+/// GNSS task tests each fix against these; the gate owns them so the task
+/// stays a dumb position source.
+static ZONES: Mutex<CriticalSectionRawMutex, RefCell<([Zone; MAX_ZONES], usize)>> = Mutex::new(
+    RefCell::new(([Zone { lat_e7: 0, lon_e7: 0, radius_m: 0 }; MAX_ZONES], 0)),
+);
+
+/// Apply the sealed config to the gate: the freshness window and the geofence
+/// zone table.
 pub fn configure(cfg: &config::Config) {
     STALENESS_S.store(cfg.staleness_s, Ordering::Relaxed);
+    ZONES.lock(|z| {
+        let mut z = z.borrow_mut();
+        let zones = cfg.zones();
+        let count = zones.len().min(MAX_ZONES);
+        z.0[..count].copy_from_slice(&zones[..count]);
+        z.1 = count;
+    });
 }
 
-/// Record whether the latest fix places the device inside a fence. Called by
-/// the GNSS task with `valid_fix && config.in_any_fence(lat, lon)`.
-pub fn set_in_fence(in_fence: bool) {
+/// Update the fence latch from a fix. `valid` = the receiver reported a fix;
+/// only then is the position tested against the configured zones. An invalid
+/// (void) fix, or a valid fix outside every fence, closes the gate at once.
+pub fn update_from_fix(valid: bool, lat_e7: i32, lon_e7: i32) {
+    let in_fence = valid
+        && ZONES.lock(|z| {
+            let z = z.borrow();
+            z.0[..z.1].iter().any(|zone| zone.contains(lat_e7, lon_e7))
+        });
     IN_FENCE.store(in_fence, Ordering::Relaxed);
 }
 

@@ -735,9 +735,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ephemerkey-config"
+version = "0.1.0"
+dependencies = [
+ "ephemerkey-core",
+ "ephemerkey-envelope",
+]
+
+[[package]]
 name = "ephemerkey-core"
 version = "0.1.0"
 dependencies = [
+ "defmt 1.1.1",
  "hmac",
  "sha1",
 ]
@@ -787,6 +796,7 @@ dependencies = [
  "embassy-sync 0.7.2",
  "embassy-time",
  "embassy-usb",
+ "ephemerkey-config",
  "ephemerkey-core",
  "ephemerkey-envelope",
  "ephemerkey-frame",

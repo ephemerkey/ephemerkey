@@ -186,6 +186,15 @@ impl<'a> Dec<'a> {
         }
     }
 
+    /// A CBOR boolean (major 7: 0xf5 true / 0xf4 false).
+    pub fn bool(&mut self) -> Result<bool, Error> {
+        match self.head()? {
+            (7, 21) => Ok(true),
+            (7, 20) => Ok(false),
+            _ => Err(Error::Malformed),
+        }
+    }
+
     /// Skip one complete item (for unknown map keys — forward compatibility).
     pub fn skip(&mut self) -> Result<(), Error> {
         self.skip_depth(8)
