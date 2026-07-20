@@ -289,18 +289,11 @@ fn parse_zones(d: &mut Dec, m: &mut DeviceModel) -> Result<(), Error> {
     let zn = d.array()?;
     m.zone_count = 0;
     for _ in 0..zn {
-        let fields = d.array()?;
-        if fields < 3 {
-            return Err(Error::Malformed);
-        }
-        let lat_e7 = clamp_i32(d.int()?);
-        let lon_e7 = clamp_i32(d.int()?);
-        let radius_m = (d.uint()? as u32).min(MAX_RADIUS_M);
-        for _ in 3..fields {
-            d.skip()?;
-        }
+        // The single zone decoder lives in envelope alongside Zone + the
+        // geofence math — reused here so there is only one zone parser.
+        let zone = ephemerkey_envelope::config::parse_zone(d)?;
         if m.zone_count < MAX_ZONES {
-            m.zones[m.zone_count] = Zone { lat_e7, lon_e7, radius_m };
+            m.zones[m.zone_count] = zone;
             m.zone_count += 1;
         }
     }
@@ -736,10 +729,6 @@ fn digits_from(v: u64) -> Result<u8, Error> {
     }
 }
 
-fn clamp_i32(v: i64) -> i32 {
-    v.clamp(i32::MIN as i64, i32::MAX as i64) as i32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -871,6 +860,29 @@ mod tests {
         // the revealed code matches the key's TOTP
         assert_eq!(r.code, totp_at(b"GENSECRET", NOW, 6));
         assert!(build_validator(&m).is_some());
+    }
+
+    #[test]
+    fn generator_zones_parse_and_gate() {
+        // A generator with one fence; the model's in_any_fence uses the shared
+        // zone decoder + geofence math.
+        let mut buf = [0u8; 128];
+        let mut e = Enc::new(&mut buf);
+        e.map(2).unwrap();
+        e.uint(1).unwrap();
+        e.uint(1).unwrap(); // role generator
+        e.uint(3).unwrap(); // zones
+        e.array(1).unwrap();
+        e.array(3).unwrap();
+        e.int(473_766_000).unwrap();
+        e.int(85_417_000).unwrap();
+        e.uint(500).unwrap();
+        let n = e.len();
+
+        let m = parse(&buf[..n], FW).unwrap();
+        assert_eq!(m.zones().len(), 1);
+        assert!(m.in_any_fence(473_766_000, 85_417_000)); // dead centre
+        assert!(!m.in_any_fence(473_766_000 + 179_660, 85_417_000)); // ~2 km north
     }
 
     #[test]

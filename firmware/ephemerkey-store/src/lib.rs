@@ -26,6 +26,8 @@
 
 #![cfg_attr(not(test), no_std)]
 
+use ephemerkey_crc::crc32;
+
 /// Erase granularity of the STM32U0x3 main flash.
 pub const PAGE: usize = 2048;
 /// Program granularity: the U0 programs one 64-bit double-word at a time and
@@ -386,19 +388,6 @@ fn put_u32(b: &mut [u8], v: u32) {
 }
 fn put_u64(b: &mut [u8], v: u64) {
     b[..8].copy_from_slice(&v.to_le_bytes());
-}
-
-/// CRC-32 (IEEE, reflected 0xEDB88320) — same polynomial the provisioning
-/// engine uses for its config-transfer checksum.
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xffff_ffff;
-    for &b in data {
-        crc ^= b as u32;
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
-        }
-    }
-    !crc
 }
 
 #[cfg(test)]

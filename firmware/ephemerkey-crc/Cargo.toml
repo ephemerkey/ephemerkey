@@ -1,0 +1,8 @@
+[package]
+name = "ephemerkey-crc"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey shared checksums (CRC-32/ISO-HDLC), no_std, zero deps"
+
+[dependencies]

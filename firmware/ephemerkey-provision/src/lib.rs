@@ -21,6 +21,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use ed25519_dalek::Signer;
+use ephemerkey_crc::crc32;
 use ephemerkey_envelope as env;
 use ephemerkey_envelope::cbor::{Dec, Enc};
 use ephemerkey_envelope::schema;
@@ -76,17 +77,6 @@ pub struct Provisioner<S: Store, A: env::AesGcm128 = env::SoftAesGcm> {
     scratch: [u8; CONFIG_MAX + 256],
     events: [(u64, u64, u64); EVENT_RING], // (seq, ts, kind)
     event_seq: u64,
-}
-
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xffff_ffff;
-    for &b in data {
-        crc ^= b as u32;
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
-        }
-    }
-    !crc
 }
 
 impl<S: Store, A: env::AesGcm128 + Default> Provisioner<S, A> {

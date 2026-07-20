@@ -13,6 +13,7 @@ path = "src/main.rs"
 ephemerkey-core = { path = "../ephemerkey-core", features = ["introspect"] }
 ephemerkey-envelope = { path = "../ephemerkey-envelope" }
 ephemerkey-config = { path = "../ephemerkey-config" }
+ephemerkey-crc = { path = "../ephemerkey-crc" }
 ephemerkey-frame = { path = "../ephemerkey-frame" }
 ed25519-dalek = "2"
 x25519-dalek = { version = "2", features = ["static_secrets"] }

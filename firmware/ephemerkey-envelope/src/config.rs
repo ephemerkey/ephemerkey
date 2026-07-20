@@ -1,28 +1,13 @@
-//! Device configuration: the integer-keyed CBOR schema the sealed config
-//! carries, plus the geofence membership test it drives.
+//! Geofence types + the sealed config's shared low-level pieces.
 //!
-//! The provisioning path delivers a `COSE_Encrypt0(COSE_Sign1(config))` blob;
-//! once [`crate::open`] + [`crate::sign1_verify`] have peeled it, the innermost
-//! `config` bytes are this map. It is deliberately small and forward-compatible
-//! (unknown keys are skipped), no_std / no-alloc — the whole thing decodes into
-//! a fixed-size [`DeviceConfig`] with no borrows of the input.
-//!
-//! ## Wire schema (CBOR map, unsigned integer keys)
-//!
-//! | key | field         | type                                   | default |
-//! |-----|---------------|----------------------------------------|---------|
-//! | 1   | `role`        | uint: 1 = Generator, 2 = LockController | (required) |
-//! | 2   | `staleness_s` | uint: max age of the last GNSS fix before codes are refused | 90 |
-//! | 3   | `zones`       | array of `[lat_e7, lon_e7, radius_m]`  | (empty) |
+//! This module owns the geofence [`Zone`] (with the FPU-free membership test),
+//! the [`Role`] enum, the top-level constants, and [`parse_zone`] — the one CBOR
+//! zone decoder. The FULL config parser (role, staleness, zones, and the whole
+//! policy schema → engine) lives in `ephemerkey-config`, which reuses these; a
+//! device never parses the config here.
 //!
 //! Coordinates are degrees × 10⁷ (`lat_e7`/`lon_e7`, signed); `radius_m` is the
-//! fence radius in metres. Extra trailing fields in a zone entry are ignored,
-//! and zones past [`MAX_ZONES`] are dropped, so a newer server can add optional
-//! per-zone data without breaking an older device.
-//!
-//! Anything a config *depends on* for a security promise still travels in the
-//! COSE `crit`-style feature list checked by `Store::validate_config` on the
-//! device — this module is the layout, not the policy.
+//! fence radius in metres.
 
 use crate::cbor::Dec;
 use crate::Error;
@@ -30,9 +15,9 @@ use crate::Error;
 /// Most geofence zones a single config may carry (fixed RAM footprint).
 pub const MAX_ZONES: usize = 8;
 
-/// Default emission-freshness window when the config omits key 2: 3× the 30 s
-/// TOTP period. On this device the GNSS is powered on-demand (button press),
-/// so freshness is measured from the *last acquired fix*, not a continuous PPS.
+/// Default emission-freshness window when the config omits its staleness key:
+/// 3× the 30 s TOTP period. On this device the GNSS is powered on-demand
+/// (button press), so freshness is measured from the *last acquired fix*.
 pub const DEFAULT_STALENESS_S: u32 = 90;
 
 /// Largest fence radius accepted (1000 km). Bounds the squared-distance
@@ -89,102 +74,22 @@ impl Zone {
     }
 }
 
-/// A fully-parsed device configuration. Fixed size, no borrows of the source
-/// bytes — safe to copy into a `static` or hold across the config buffer being
-/// reused.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct DeviceConfig {
-    pub role: Role,
-    /// Max age (seconds) of the last GNSS fix before emission is refused.
-    pub staleness_s: u32,
-    zones: [Zone; MAX_ZONES],
-    zone_count: usize,
-}
-
-impl DeviceConfig {
-    /// The "shut" default: a Generator with no fences, so [`in_any_fence`] is
-    /// always false until a real config is provisioned. Used on a
-    /// factory-fresh device and as the fail-safe when parsing fails.
-    ///
-    /// [`in_any_fence`]: DeviceConfig::in_any_fence
-    pub const fn shut_default() -> Self {
-        DeviceConfig {
-            role: Role::Generator,
-            staleness_s: DEFAULT_STALENESS_S,
-            zones: [Zone { lat_e7: 0, lon_e7: 0, radius_m: 0 }; MAX_ZONES],
-            zone_count: 0,
-        }
-    }
-
-    /// The configured geofence zones.
-    pub fn zones(&self) -> &[Zone] {
-        &self.zones[..self.zone_count]
-    }
-
-    /// Whether a point lies inside *any* configured fence. With no zones this
-    /// is always false — an unprovisioned generator can never emit (DESIGN:
-    /// "inside an authorized geofence").
-    pub fn in_any_fence(&self, lat_e7: i32, lon_e7: i32) -> bool {
-        self.zones().iter().any(|z| z.contains(lat_e7, lon_e7))
-    }
-}
-
-impl Default for DeviceConfig {
-    fn default() -> Self {
-        Self::shut_default()
-    }
-}
-
-/// Parse the integer-keyed CBOR config map. Unknown keys are skipped; the
-/// `role` key (1) is required. Returns [`Error::Malformed`] on a bad shape or
-/// an unrecognised role.
-pub fn parse(bytes: &[u8]) -> Result<DeviceConfig, Error> {
-    let mut d = Dec::new(bytes);
-    let n = d.map()?;
-    let mut cfg = DeviceConfig::shut_default();
-    let mut have_role = false;
-
-    for _ in 0..n {
-        match d.uint()? {
-            1 => {
-                cfg.role = match d.uint()? {
-                    1 => Role::Generator,
-                    2 => Role::LockController,
-                    _ => return Err(Error::Malformed),
-                };
-                have_role = true;
-            }
-            2 => cfg.staleness_s = d.uint()? as u32,
-            3 => {
-                let zn = d.array()?;
-                cfg.zone_count = 0;
-                for _ in 0..zn {
-                    let fields = d.array()?;
-                    if fields < 3 {
-                        return Err(Error::Malformed);
-                    }
-                    let lat_e7 = clamp_i32(d.int()?);
-                    let lon_e7 = clamp_i32(d.int()?);
-                    let radius_m = (d.uint()? as u32).min(MAX_RADIUS_M);
-                    // Ignore any extra per-zone fields a newer server added.
-                    for _ in 3..fields {
-                        d.skip()?;
-                    }
-                    if cfg.zone_count < MAX_ZONES {
-                        cfg.zones[cfg.zone_count] = Zone { lat_e7, lon_e7, radius_m };
-                        cfg.zone_count += 1;
-                    }
-                }
-            }
-            _ => d.skip()?,
-        }
-    }
-
-    if !have_role {
+/// Decode one CBOR zone entry — an array `[lat_e7, lon_e7, radius_m]`, extra
+/// trailing fields ignored — into a [`Zone`], clamping the radius to
+/// [`MAX_RADIUS_M`]. The single zone decoder, shared by `ephemerkey-config`'s
+/// full-config parser.
+pub fn parse_zone(d: &mut Dec) -> Result<Zone, Error> {
+    let fields = d.array()?;
+    if fields < 3 {
         return Err(Error::Malformed);
     }
-    Ok(cfg)
+    let lat_e7 = clamp_i32(d.int()?);
+    let lon_e7 = clamp_i32(d.int()?);
+    let radius_m = (d.uint()? as u32).min(MAX_RADIUS_M);
+    for _ in 3..fields {
+        d.skip()?; // a newer server may add optional per-zone fields
+    }
+    Ok(Zone { lat_e7, lon_e7, radius_m })
 }
 
 fn clamp_i32(v: i64) -> i32 {
@@ -212,84 +117,23 @@ mod tests {
     use super::*;
     use crate::cbor::Enc;
 
-    /// Encode a config map with role (key 1), optional staleness (key 2), and
-    /// zones (key 3) as `[lat_e7, lon_e7, radius_m]` triples.
-    fn cfg_bytes(role: u64, staleness: Option<u64>, zones: &[(i64, i64, u64)]) -> Vec<u8> {
-        let mut buf = [0u8; 512];
-        let mut e = Enc::new(&mut buf);
-        let entries = 1 + staleness.is_some() as u64 + !zones.is_empty() as u64;
-        e.map(entries).unwrap();
-        e.uint(1).unwrap();
-        e.uint(role).unwrap();
-        if let Some(s) = staleness {
-            e.uint(2).unwrap();
-            e.uint(s).unwrap();
-        }
-        if !zones.is_empty() {
-            e.uint(3).unwrap();
-            e.array(zones.len() as u64).unwrap();
-            for &(lat, lon, r) in zones {
-                e.array(3).unwrap();
-                e.int(lat).unwrap();
-                e.int(lon).unwrap();
-                e.uint(r).unwrap();
-            }
-        }
-        let n = e.len();
-        buf[..n].to_vec()
-    }
-
-    #[test]
-    fn minimal_generator_defaults() {
-        let cfg = parse(&cfg_bytes(1, None, &[])).unwrap();
-        assert_eq!(cfg.role, Role::Generator);
-        assert_eq!(cfg.staleness_s, DEFAULT_STALENESS_S);
-        assert!(cfg.zones().is_empty());
-        // No fences => never inside one.
-        assert!(!cfg.in_any_fence(481_173_000, 115_166_666));
-    }
-
-    #[test]
-    fn lock_controller_role_and_staleness() {
-        let cfg = parse(&cfg_bytes(2, Some(300), &[])).unwrap();
-        assert_eq!(cfg.role, Role::LockController);
-        assert_eq!(cfg.staleness_s, 300);
-    }
-
-    #[test]
-    fn unknown_role_and_missing_role_rejected() {
-        assert_eq!(parse(&cfg_bytes(9, None, &[])), Err(Error::Malformed));
-        // A map with only key 2 (no role).
-        let mut buf = [0u8; 16];
-        let mut e = Enc::new(&mut buf);
-        e.map(1).unwrap();
-        e.uint(2).unwrap();
-        e.uint(90).unwrap();
-        let n = e.len();
-        assert_eq!(parse(&buf[..n]), Err(Error::Malformed));
-    }
-
     #[test]
     fn geofence_inside_and_outside() {
         // Fence centred on ~Zürich HB, 500 m radius.
-        let (lat, lon, r) = (473_766_000_i64, 85_417_000_i64, 500);
-        let cfg = parse(&cfg_bytes(1, None, &[(lat, lon, r)])).unwrap();
+        let z = Zone { lat_e7: 473_766_000, lon_e7: 85_417_000, radius_m: 500 };
 
         // Dead centre: inside.
-        assert!(cfg.in_any_fence(lat as i32, lon as i32));
-
-        // ~200 m north. 1° lat ≈ 111_320 m ⇒ 200 m ≈ 17_966 e7: inside.
-        assert!(cfg.in_any_fence((lat + 17_966) as i32, lon as i32));
-
+        assert!(z.contains(z.lat_e7, z.lon_e7));
+        // ~200 m north (1° lat ≈ 111_320 m ⇒ 200 m ≈ 17_966 e7): inside.
+        assert!(z.contains(z.lat_e7 + 17_966, z.lon_e7));
         // ~2 km north (≈ 179_660 e7): outside.
-        assert!(!cfg.in_any_fence((lat + 179_660) as i32, lon as i32));
-
+        assert!(!z.contains(z.lat_e7 + 179_660, z.lon_e7));
         // ~2 km east: outside, and this exercises the cos(lat) scaling — at
         // 47.4°, 1° lon ≈ 75 km, so 2 km ≈ 265_500 e7. Without the cos term
         // this same offset would read as only ~1.35 km and wrongly pass.
-        assert!(!cfg.in_any_fence(lat as i32, (lon + 265_500) as i32));
+        assert!(!z.contains(z.lat_e7, z.lon_e7 + 265_500));
         // ~300 m east (≈ 39_800 e7): inside the 500 m fence.
-        assert!(cfg.in_any_fence(lat as i32, (lon + 39_800) as i32));
+        assert!(z.contains(z.lat_e7, z.lon_e7 + 39_800));
     }
 
     #[test]
@@ -303,79 +147,31 @@ mod tests {
     }
 
     #[test]
-    fn radius_clamped_and_zone_overflow_dropped() {
-        // Oversized radius is clamped, not rejected.
-        let cfg = parse(&cfg_bytes(1, None, &[(0, 0, 9_000_000)])).unwrap();
-        assert_eq!(cfg.zones()[0].radius_m, MAX_RADIUS_M);
-
-        // More than MAX_ZONES zones: extras are dropped, parse still succeeds.
-        let many: Vec<_> = (0..(MAX_ZONES as i64 + 4)).map(|i| (i * 1_000_000, 0, 100)).collect();
-        let cfg = parse(&cfg_bytes(1, None, &many)).unwrap();
-        assert_eq!(cfg.zones().len(), MAX_ZONES);
-    }
-
-    #[test]
-    fn full_document_parses_pinned_keys_and_skips_policy() {
-        // A realistic sealed config as the console emits it: pinned keys 1-3
-        // plus the policy sub-documents (4=keys, 5=slots, 7=confirm) and crit
-        // (8) that the firmware carries but does not parse. parse() must read
-        // role/staleness/zones and skip the rest without error.
-        let mut buf = [0u8; 512];
-        let mut e = Enc::new(&mut buf);
-        e.map(6).unwrap();
-        e.uint(1).unwrap();
-        e.uint(2).unwrap(); // role: LockController
-        e.uint(3).unwrap(); // zones
-        e.array(1).unwrap();
-        e.array(3).unwrap();
-        e.int(473_766_000).unwrap();
-        e.int(85_417_000).unwrap();
-        e.uint(500).unwrap();
-        e.uint(4).unwrap(); // keys: array of text-keyed maps (skipped)
-        e.array(1).unwrap();
-        e.map(2).unwrap();
-        e.tstr("secret").unwrap();
-        e.tstr("s3cr3t").unwrap();
-        e.tstr("digits").unwrap();
-        e.uint(6).unwrap();
-        e.uint(5).unwrap(); // slots: array with a nested map + bool (skipped)
-        e.array(1).unwrap();
-        e.map(2).unwrap();
-        e.tstr("key").unwrap();
-        e.uint(0).unwrap();
-        e.tstr("progress").unwrap();
-        e.bool(true).unwrap();
-        e.uint(7).unwrap(); // confirm: map (skipped)
-        e.map(1).unwrap();
-        e.tstr("mode").unwrap();
-        e.tstr("sequence").unwrap();
-        e.uint(8).unwrap(); // crit (skipped by firmware; the emulator reads it)
-        e.array(1).unwrap();
-        e.tstr("quorum-pace").unwrap();
-        let n = e.len();
-
-        let cfg = parse(&buf[..n]).unwrap();
-        assert_eq!(cfg.role, Role::LockController);
-        assert_eq!(cfg.staleness_s, DEFAULT_STALENESS_S); // key 2 absent
-        assert_eq!(cfg.zones().len(), 1);
-        assert!(cfg.in_any_fence(473_766_000, 85_417_000));
-    }
-
-    #[test]
-    fn unknown_keys_skipped() {
-        // Hand-roll a map with an unknown key 7 between the known ones.
+    fn parse_zone_clamps_and_skips_extras() {
         let mut buf = [0u8; 64];
         let mut e = Enc::new(&mut buf);
-        e.map(3).unwrap();
-        e.uint(1).unwrap();
-        e.uint(1).unwrap(); // role
-        e.uint(7).unwrap();
-        e.tstr("future").unwrap(); // unknown -> skipped
-        e.uint(2).unwrap();
-        e.uint(120).unwrap(); // staleness
+        // A 4-field zone (extra trailing field) with an oversized radius.
+        e.array(4).unwrap();
+        e.int(473_766_000).unwrap();
+        e.int(85_417_000).unwrap();
+        e.uint(9_000_000).unwrap(); // > MAX_RADIUS_M
+        e.tstr("name").unwrap(); // extra field — must be skipped
         let n = e.len();
-        let cfg = parse(&buf[..n]).unwrap();
-        assert_eq!(cfg.role, Role::Generator);
-        assert_eq!(cfg.staleness_s, 120);
+
+        let mut d = Dec::new(&buf[..n]);
+        let z = parse_zone(&mut d).unwrap();
+        assert_eq!(z.lat_e7, 473_766_000);
+        assert_eq!(z.lon_e7, 85_417_000);
+        assert_eq!(z.radius_m, MAX_RADIUS_M);
+
+        // Too few fields is malformed.
+        let mut buf = [0u8; 16];
+        let mut e = Enc::new(&mut buf);
+        e.array(2).unwrap();
+        e.int(1).unwrap();
+        e.int(2).unwrap();
+        let n = e.len();
+        let mut d = Dec::new(&buf[..n]);
+        assert_eq!(parse_zone(&mut d), Err(Error::Malformed));
     }
 }

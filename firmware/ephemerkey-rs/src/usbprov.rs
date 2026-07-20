@@ -10,14 +10,12 @@ use embassy_stm32::usb::Driver;
 use embassy_stm32::{peripherals, Peri};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
-use embassy_usb::{Builder, Config};
 use ephemerkey_frame::MAX_PAYLOAD;
 use ephemerkey_store::StoredIdentity;
 
 use crate::provision::{provisioner, DeviceJournal, DeviceProvisioner};
+use crate::usbcdc::{cdc, CdcBuffers, PACKET};
 use crate::Irqs;
-
-const PACKET: usize = 64;
 
 /// Run the provisioning console over USB CDC. Owns the flash journal + identity
 /// for the lifetime of provisioning mode.
@@ -31,30 +29,9 @@ pub async fn task(
     id: StoredIdentity,
 ) {
     let driver = Driver::new(usb, Irqs, dp, dm);
-
-    // TODO: replace the placeholder VID/PID before any public release. 0x1209
-    // is pid.codes (community/test space); 0x0001 is its "in development" PID.
-    let mut config = Config::new(0x1209, 0x0001);
-    config.manufacturer = Some("ephemerkey");
-    config.product = Some("ephemerkey provisioning");
-    config.max_power = 100;
-    config.max_packet_size_0 = PACKET as u8;
-
-    let mut config_descriptor = [0u8; 128];
-    let mut bos_descriptor = [0u8; 32];
-    let mut control_buf = [0u8; 64];
+    let mut buffers = CdcBuffers::new();
     let mut state = State::new();
-
-    let mut builder = Builder::new(
-        driver,
-        config,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut [],
-        &mut control_buf,
-    );
-    let mut class = CdcAcmClass::new(&mut builder, &mut state, PACKET as u16);
-    let mut device = builder.build();
+    let (mut device, mut class) = cdc(driver, "ephemerkey provisioning", &mut buffers, &mut state);
 
     // The engine (~14 KiB, or ~18 KiB with the hw-aes scratch) lives here as a
     // task local — in the executor's task arena, never on a call stack.

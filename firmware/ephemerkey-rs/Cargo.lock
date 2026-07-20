@@ -752,6 +752,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ephemerkey-crc"
+version = "0.1.0"
+
+[[package]]
 name = "ephemerkey-envelope"
 version = "0.1.0"
 dependencies = [
@@ -776,6 +780,7 @@ name = "ephemerkey-provision"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "ephemerkey-crc",
  "ephemerkey-envelope",
  "ephemerkey-frame",
  "sha2",
@@ -810,6 +815,9 @@ dependencies = [
 [[package]]
 name = "ephemerkey-store"
 version = "0.1.0"
+dependencies = [
+ "ephemerkey-crc",
+]
 
 [[package]]
 name = "fiat-crypto"

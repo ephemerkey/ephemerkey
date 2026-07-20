@@ -46,6 +46,8 @@ mod gate;
 mod pacaes;
 mod provision;
 #[cfg(feature = "usb-provision")]
+mod usbcdc;
+#[cfg(feature = "usb-provision")]
 mod usbprov;
 
 #[cfg(feature = "buzzer")]

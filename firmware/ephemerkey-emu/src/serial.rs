@@ -9,6 +9,7 @@
 //! State (device identity, owner binding, config, events) persists in the
 //! JSON file; delete it for a factory-fresh device.
 
+use ephemerkey_crc::crc32;
 use ephemerkey_envelope as env;
 use ephemerkey_envelope::cbor::Enc;
 use ephemerkey_envelope::schema;
@@ -100,16 +101,6 @@ struct Xfer {
     crc32: u32,
 }
 
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xffff_ffff;
-    for &b in data {
-        crc ^= b as u32;
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
-        }
-    }
-    !crc
-}
 
 impl Device {
     fn new(path: String) -> Self {

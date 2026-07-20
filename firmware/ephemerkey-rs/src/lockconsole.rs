@@ -16,12 +16,12 @@ use embassy_stm32::usb::Driver;
 use embassy_stm32::{peripherals, Peri};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
-use embassy_usb::{Builder, Config};
 use ephemerkey_config::Calendars;
 use ephemerkey_core::engine::{LockEngine, Outcome};
 use ephemerkey_core::policy::Sensors;
 
 use crate::clock;
+use crate::usbcdc::{cdc, CdcBuffers, PACKET};
 use crate::Irqs;
 
 /// The gate environment the lock evaluates codes against. The calendar gate is
@@ -45,7 +45,6 @@ impl Sensors for LockEnv {
     }
 }
 
-const PACKET: usize = 64;
 const LINE_MAX: usize = 24;
 
 #[embassy_executor::task]
@@ -57,29 +56,9 @@ pub async fn task(
     calendars: Calendars,
 ) {
     let driver = Driver::new(usb, Irqs, dp, dm);
-
-    // TODO: replace the placeholder VID/PID before any public release.
-    let mut config = Config::new(0x1209, 0x0001);
-    config.manufacturer = Some("ephemerkey");
-    config.product = Some("ephemerkey lock console");
-    config.max_power = 100;
-    config.max_packet_size_0 = PACKET as u8;
-
-    let mut config_descriptor = [0u8; 128];
-    let mut bos_descriptor = [0u8; 32];
-    let mut control_buf = [0u8; 64];
+    let mut buffers = CdcBuffers::new();
     let mut state = State::new();
-
-    let mut builder = Builder::new(
-        driver,
-        config,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut [],
-        &mut control_buf,
-    );
-    let mut class = CdcAcmClass::new(&mut builder, &mut state, PACKET as u16);
-    let mut device = builder.build();
+    let (mut device, mut class) = cdc(driver, "ephemerkey lock console", &mut buffers, &mut state);
 
     let mut lock = lock;
     let usb_fut = device.run();

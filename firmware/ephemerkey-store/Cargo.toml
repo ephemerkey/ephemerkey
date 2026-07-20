@@ -6,5 +6,8 @@ license = "Apache-2.0"
 description = "ephemerkey persistent store: internal-flash journal (identity page + 2-slot ping-pong config record with atomic commit + CRC) behind a portable Flash trait — no_std, host-tested with a RAM fake-flash"
 
 [dependencies]
+# Zero-dep shared CRC-32 (same polynomial the provisioning engine checksums
+# config transfers with) — keeps this crate's single external dependency tiny.
+ephemerkey-crc = { path = "../ephemerkey-crc" }
 
 [dev-dependencies]

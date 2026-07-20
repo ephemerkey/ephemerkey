@@ -191,12 +191,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ephemerkey-crc"
+version = "0.1.0"
+
+[[package]]
 name = "ephemerkey-emu"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "ephemerkey-config",
  "ephemerkey-core",
+ "ephemerkey-crc",
  "ephemerkey-envelope",
  "ephemerkey-frame",
  "serde",
