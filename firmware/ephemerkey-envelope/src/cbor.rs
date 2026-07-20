@@ -84,6 +84,12 @@ impl<'a> Enc<'a> {
         self.head(5, len)
     }
 
+    /// A CBOR boolean (major 7: 0xf5 true / 0xf4 false). Config policy fields
+    /// use these; the decoder has no reader, but `Dec::skip` consumes them.
+    pub fn bool(&mut self, v: bool) -> Result<(), Error> {
+        self.extend(&[if v { 0xf5 } else { 0xf4 }])
+    }
+
     /// Reserve a bstr of exactly `len` bytes; returns its position range for
     /// the caller to fill (used for encrypt-in-place).
     pub fn bstr_reserve(&mut self, len: usize) -> Result<core::ops::Range<usize>, Error> {

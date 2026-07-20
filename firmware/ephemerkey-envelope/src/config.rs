@@ -315,6 +315,53 @@ mod tests {
     }
 
     #[test]
+    fn full_document_parses_pinned_keys_and_skips_policy() {
+        // A realistic sealed config as the console emits it: pinned keys 1-3
+        // plus the policy sub-documents (4=keys, 5=slots, 7=confirm) and crit
+        // (8) that the firmware carries but does not parse. parse() must read
+        // role/staleness/zones and skip the rest without error.
+        let mut buf = [0u8; 512];
+        let mut e = Enc::new(&mut buf);
+        e.map(6).unwrap();
+        e.uint(1).unwrap();
+        e.uint(2).unwrap(); // role: LockController
+        e.uint(3).unwrap(); // zones
+        e.array(1).unwrap();
+        e.array(3).unwrap();
+        e.int(473_766_000).unwrap();
+        e.int(85_417_000).unwrap();
+        e.uint(500).unwrap();
+        e.uint(4).unwrap(); // keys: array of text-keyed maps (skipped)
+        e.array(1).unwrap();
+        e.map(2).unwrap();
+        e.tstr("secret").unwrap();
+        e.tstr("s3cr3t").unwrap();
+        e.tstr("digits").unwrap();
+        e.uint(6).unwrap();
+        e.uint(5).unwrap(); // slots: array with a nested map + bool (skipped)
+        e.array(1).unwrap();
+        e.map(2).unwrap();
+        e.tstr("key").unwrap();
+        e.uint(0).unwrap();
+        e.tstr("progress").unwrap();
+        e.bool(true).unwrap();
+        e.uint(7).unwrap(); // confirm: map (skipped)
+        e.map(1).unwrap();
+        e.tstr("mode").unwrap();
+        e.tstr("sequence").unwrap();
+        e.uint(8).unwrap(); // crit (skipped by firmware; the emulator reads it)
+        e.array(1).unwrap();
+        e.tstr("quorum-pace").unwrap();
+        let n = e.len();
+
+        let cfg = parse(&buf[..n]).unwrap();
+        assert_eq!(cfg.role, Role::LockController);
+        assert_eq!(cfg.staleness_s, DEFAULT_STALENESS_S); // key 2 absent
+        assert_eq!(cfg.zones().len(), 1);
+        assert!(cfg.in_any_fence(473_766_000, 85_417_000));
+    }
+
+    #[test]
     fn unknown_keys_skipped() {
         // Hand-roll a map with an unknown key 7 between the known ones.
         let mut buf = [0u8; 64];
