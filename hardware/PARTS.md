@@ -57,7 +57,9 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | R 100k | C25741 | load-share gate pulldown (R7), WiFi LDO EN pulldown (R26) |
 | R 10k | C25744 | BOOT0 pulldown (R1), WiFi EN RC + straps (R18–R21) |
 | R 1k | C11702 | LED series (R2,R3,R8), WiFi UART series (R22,R23) |
-| R 0Ω | C17168 | antenna π-match series (Rm1), WiFi→MCU recovery links (R24,R25 — DNP) |
+| R 0Ω | C17168 | antenna π-match series (Rm1), TPS63900 CFG2 = I_lim Unlimited (R28), WiFi→MCU recovery links (R24,R25 — DNP) |
+| R 36.5k 1% | C25887 | TPS63900 CFG1 = V_O(2) 3.3V (R27) |
+| R 16.2k 1% | C27176 | TPS63900 CFG3 = V_O(1) 3.3V, the active preset (R29) |
 | C 100nF | C1525 | decoupling (C3,C4,C5,C8,C9,C17,C20,C21,C22,C23,C24,C28,C30) |
 | C 1µF | C29266 | VDDA/VREF+ filter (C7), WiFi EN RC (C25) |
 | C 12pF | C1547 | LSE load caps (C1,C2) — tune to crystal CL |
@@ -70,6 +72,10 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
   500 mAh). Use 3.9 kΩ for ~256 mA if faster charging is wanted.
 - **LSE load caps:** 12 pF shown; set to ≈2·(CL − C_stray) for the chosen Y1 CL,
   trim residual with the STM32 RTC SMOOTHCALIB.
+- **TPS63900 CFG straps (R27–R29):** read once at EN rising by the R2D
+  interface — 1% / ≤200 ppm required (TI: total RMS error < 3%), keep CFG
+  traces short (< 10 pF), SEL strapped to GND. Both presets 3.3 V, I_lim
+  Unlimited (L1 Isat 2 A meets the ≥ 2 A requirement).
 - **3 parts need a downloaded 3D model** (STM32U083KCU6, MAX-M10S, W3011A) — see
   `lib/3dmodels/README.md`.
 - **WiFi is optional:** MD2 + U6 + R18–R26 + C25–C29 live on `wifi.kicad_sch`

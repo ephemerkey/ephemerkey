@@ -3092,7 +3092,7 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.\n\nREF  PART            PIN  SIGNAL  CONNECTION                    REF  PART           PIN    SIGNAL    CONNECTION\n---  --------------  ---  ------  --------------------------    ---  -------------  -----  --------  -----------------------------\nJ3   USB-C 16P       --   VBUS    VBUS_5V                       U4   MCP73831-2-OT  1      STAT      D4 CHG LED + R8 1k\n     (horizontal)    --   GND     GND                                (SOT-23-5)     2      VSS       GND\n                     --   CC1     R4 5.1k -> GND                                    3      VBAT      BAT+  (C11 10uF)\n                     --   CC2     R5 5.1k -> GND                                    4      VDD       VBUS_5V  (C10 10uF)\n                     --   D+      U3 -> USB_DP / PA12                               5      PROG      R6 4.7k -> GND  (Ichg ~213mA)\n                     --   D-      U3 -> USB_DM / PA11\n                     --   SBU1/2  NC                            Q1   AO3401A PMOS   1      G         VBUS_5V ; R7 100k -> GND\n                     --   SHIELD  GND                                load-share     2      S         VSYS   <-- NOT BAT+\n                                                                     (SOT-23)       3      D         BAT+   <-- NOT VSYS\nJ5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)\n     GT-USB-7051A    --   GND     GND                           D3   B5819W         A      --        VBUS_5V\n                     --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS\n                     --   CC2     R16 5.1k -> GND\n                     --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)\n                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (preset 1)\n                                                                                    3/4/5  CFG1/2/3  strap = 3.3V out\nU3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)\n     (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH\n                     3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH\n                     4    I/O2    D- (MCU, PA11)                                    8      GND       GND\n                     5    VBUS    VBUS_5V                                           10     VIN       VSYS  (C12 10uF)\n                     6    I/O1    D+ (MCU, PA12)                                    11     EP        GND\n\n                                                                J4   JST-PH (RA)    1      BAT+      BAT+  (1S Li-ion, protected)\n                                                                                    2      GND       GND\n\nLOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BAT+  (USB out: Q1 ON via R7).\n  A PMOS body diode conducts D->S.  With D=BAT+ / S=VSYS it points BAT+ -> VSYS: the battery always reaches the\n  load, and USB can never back-feed the cell.  Swapping S/D forward-biases the body diode when VSYS ~4.7V > BAT+,\n  dumping uncontrolled charge current into the cell and bypassing U4.\n  The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.\n\nBULK:  C15 = VBUS_5V.   C16 = BAT+."
+	(text "POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.\n\nREF  PART            PIN  SIGNAL  CONNECTION                    REF  PART           PIN    SIGNAL    CONNECTION\n---  --------------  ---  ------  --------------------------    ---  -------------  -----  --------  -----------------------------\nJ3   USB-C 16P       --   VBUS    VBUS_5V                       U4   MCP73831-2-OT  1      STAT      D4 CHG LED + R8 1k\n     (horizontal)    --   GND     GND                                (SOT-23-5)     2      VSS       GND\n                     --   CC1     R4 5.1k -> GND                                    3      VBAT      BAT+  (C11 10uF)\n                     --   CC2     R5 5.1k -> GND                                    4      VDD       VBUS_5V  (C10 10uF)\n                     --   D+      U3 -> USB_DP / PA12                               5      PROG      R6 4.7k -> GND  (Ichg ~213mA)\n                     --   D-      U3 -> USB_DM / PA11\n                     --   SBU1/2  NC                            Q1   AO3401A PMOS   1      G         VBUS_5V ; R7 100k -> GND\n                     --   SHIELD  GND                                load-share     2      S         VSYS   <-- NOT BAT+\n                                                                     (SOT-23)       3      D         BAT+   <-- NOT VSYS\nJ5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)\n     GT-USB-7051A    --   GND     GND                           D3   B5819W         A      --        VBUS_5V\n                     --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS\n                     --   CC2     R16 5.1k -> GND\n                     --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)\n                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (selects VO1)\n                                                                                    3      CFG1      R27 36.5k -> GND  VO2=3.3V\n                                                                                    4      CFG2      R28 0R    -> GND  Ilim=unl.\n                                                                                    5      CFG3      R29 16.2k -> GND  VO1=3.3V\nU3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)\n     (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH\n                     3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH\n                     4    I/O2    D- (MCU, PA11)                                    8      GND       GND\n                     5    VBUS    VBUS_5V                                           10     VIN       VSYS  (C12 10uF)\n                     6    I/O1    D+ (MCU, PA12)                                    11     EP        GND\n\n                                                                J4   JST-PH (RA)    1      BAT+      BAT+  (1S Li-ion, protected)\n                                                                                    2      GND       GND\n\nLOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BAT+  (USB out: Q1 ON via R7).\n  A PMOS body diode conducts D->S.  With D=BAT+ / S=VSYS it points BAT+ -> VSYS: the battery always reaches the\n  load, and USB can never back-feed the cell.  Swapping S/D forward-biases the body diode when VSYS ~4.7V > BAT+,\n  dumping uncontrolled charge current into the cell and bypassing U4.\n  The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.\n\nBULK:  C15 = VBUS_5V.   C16 = BAT+.\n\nCFG (TPS63900 R2D):  resistors read ONCE at startup (EN rising), then the pins are disabled -- power-cycle to change.\n  SEL=GND makes VO(1)/R29 the live setting; R27 = 36.5k so a SEL=high fault still gives 3.3V.  R28 = 0R -> input\n  current limit 'Unlimited' (needs L1 Isat >= 2A: FNR3015S2R2MT is 2A -- OK).  Use 1%, <=200ppm parts (TI: total\n  RMS error < 3%); keep CFG traces short, < 10pF pin capacitance, no test points / caps on CFG nets."
 		(exclude_from_sim no)
 		(at 12 168.4 0)
 		(effects
@@ -7092,6 +7092,279 @@
 			(project "ephemerkey"
 				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
 					(reference "R5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 297.18 149.86 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "b85271f4-44b1-4e20-bcb2-e3a1964cca94")
+		(property "Reference" "R27"
+			(at 300.99 147.32000000000002 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "36.5k"
+			(at 300.99 152.4 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 297.18 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 297.18 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 297.18 149.86 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25887"
+			(at 297.18 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "266a7cff-4ac6-4d91-8b00-d26594e0777a")
+		)
+		(pin "2"
+			(uuid "ef2ca55d-31ab-44dd-9fed-28ff60a07697")
+		)
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
+					(reference "R27")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 309.88 149.86 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "3580e178-af8e-46fb-a8df-216de102186d")
+		(property "Reference" "R28"
+			(at 313.69 147.32000000000002 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0R"
+			(at 313.69 152.4 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 309.88 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 309.88 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 309.88 149.86 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C17168"
+			(at 309.88 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "53a01fb0-3528-4856-8019-2fce66e387c4")
+		)
+		(pin "2"
+			(uuid "89d41ff1-9873-44bc-a121-e0924301b800")
+		)
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
+					(reference "R28")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 322.58 149.86 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "c5e7ebe4-24a7-45d9-95db-f1948f0df1eb")
+		(property "Reference" "R29"
+			(at 326.39 147.32000000000002 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "16.2k"
+			(at 326.39 152.4 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 322.58 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 322.58 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 322.58 149.86 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C27176"
+			(at 322.58 149.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f50a7987-43bf-482f-b2ff-cd7c311533be")
+		)
+		(pin "2"
+			(uuid "7ca4f905-b6a3-4c33-bfda-9f8bd5f4e3be")
+		)
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/1a9d986c-45f1-4170-b653-57058bfaa0ea"
+					(reference "R29")
 					(unit 1)
 				)
 			)
