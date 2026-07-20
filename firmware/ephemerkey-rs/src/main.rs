@@ -94,9 +94,6 @@ async fn main(spawner: Spawner) {
     // until then (see clock::now_unix / is_fresh).
     clock::init(p.RTC);
 
-    let cfg = config::load();
-    info!("ephemerkey-rs boot, role: {}", cfg.role);
-
     // --- Board-specific pins -------------------------------------------------
     // status LED (heartbeat / provisioning-mode indicator) and the provisioning
     // button (active-low). Everything else is board-independent.
@@ -122,6 +119,18 @@ async fn main(spawner: Spawner) {
     });
     info!("identity ready");
 
+    // Device configuration (role, geofence zones, freshness window) from the
+    // newest committed journal record; the shut default on a fresh/unparseable
+    // config. Apply the freshness window to the emission gate.
+    let cfg = config::load(&journal);
+    info!(
+        "ephemerkey-rs boot, role: {}, zones: {}, staleness: {}s",
+        cfg.role,
+        cfg.zones().len(),
+        cfg.staleness_s
+    );
+    gate::configure(&cfg);
+
     // --- Provisioning mode (button held at boot) ----------------------------
     // "Hold the provisioning button while connecting": only in that case do we
     // bring up the USB device and accept a sealed config. Otherwise the device
@@ -145,7 +154,7 @@ async fn main(spawner: Spawner) {
         #[cfg(feature = "gnss")]
         config::Role::Generator => {
             spawner.spawn(
-                gnss::task(p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1, p.PA0, p.EXTI0)
+                gnss::task(cfg, p.USART1, p.PA9, p.PA10, p.PA4, p.PA1, p.DMA1_CH1, p.PA0, p.EXTI0)
                     .unwrap(),
             );
         }

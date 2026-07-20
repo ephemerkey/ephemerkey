@@ -45,7 +45,7 @@ ephemerkey-core = { path = "../ephemerkey-core" }
 # Provisioning: framed serial protocol + sealed-envelope crypto, shared with
 # the emulator (`ekemu serial`) and host-tested there and in ekctl e2e.
 ephemerkey-provision = { path = "../ephemerkey-provision" }
-ephemerkey-envelope = { path = "../ephemerkey-envelope" }
+ephemerkey-envelope = { path = "../ephemerkey-envelope", features = ["defmt"] }
 ephemerkey-frame = { path = "../ephemerkey-frame" }
 # Persistent flash journal (identity page + ping-pong config record), host-tested.
 ephemerkey-store = { path = "../ephemerkey-store" }

@@ -1,9 +1,15 @@
 //! MAX-M10S GNSS: USART1 NMEA link + reset / EXTINT control + 1 PPS.
 //!
-//! Parses RMC sentences off the UART and disciplines the RTC ([`crate::clock`])
-//! whenever the receiver reports a valid fix, so the TOTP time base tracks GNSS
-//! UTC. The 1 PPS TIMEPULSE (PA0) is watched concurrently as a liveness/second
-//! marker.
+//! Parses RMC sentences off the UART and, on each valid fix, disciplines the
+//! RTC ([`crate::clock`]) from the timestamp and latches geofence membership
+//! ([`crate::gate::set_in_fence`]) by testing the position against the sealed
+//! config's zone table. Together those are what [`crate::gate::may_emit`] reads.
+//!
+//! Power model: the receiver is powered on-demand (user presses the button, we
+//! acquire one fix, it powers back down), so the 1 PPS TIMEPULSE (PA0) is only
+//! present briefly — it is watched here as a liveness/second marker, never as a
+//! required continuous signal. Emission freshness is anchored to the last fix's
+//! RTC discipline (see [`crate::gate`]), not to PPS.
 //!
 //! Coarse for now: the clock is set from the RMC timestamp (good to well under
 //! the 30 s TOTP window). Sub-second alignment — applying the pending UTC
@@ -20,7 +26,7 @@ use embassy_stm32::usart::{self, UartRx};
 use embassy_stm32::{bind_interrupts, dma, interrupt, Peri};
 use embassy_time::Timer;
 
-use crate::{clock, gate};
+use crate::{clock, config, gate};
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<USART1>;
@@ -37,6 +43,7 @@ const LINE_MAX: usize = 96;
 
 #[embassy_executor::task]
 pub async fn task(
+    cfg: config::Config,
     uart: Peri<'static, USART1>,
     tx: Peri<'static, PA9>,
     rx: Peri<'static, PA10>,
@@ -64,9 +71,9 @@ pub async fn task(
     info!("gnss: reset released");
 
     // M10 default: 9600 baud NMEA, RX on DMA.
-    let mut cfg = usart::Config::default();
-    cfg.baudrate = 9600;
-    let mut rx: UartRx<'static, _> = match UartRx::new(uart, rx, rx_dma, Irqs, cfg) {
+    let mut ucfg = usart::Config::default();
+    ucfg.baudrate = 9600;
+    let mut rx: UartRx<'static, _> = match UartRx::new(uart, rx, rx_dma, Irqs, ucfg) {
         Ok(r) => r,
         Err(_) => {
             warn!("gnss: uart init failed");
@@ -79,7 +86,7 @@ pub async fn task(
     let mut ll = 0usize;
     loop {
         match select(rx.read_until_idle(&mut buf), pps.wait_for_rising_edge()).await {
-            Either::First(Ok(n)) => feed(&buf[..n], &mut line, &mut ll),
+            Either::First(Ok(n)) => feed(&cfg, &buf[..n], &mut line, &mut ll),
             Either::First(Err(e)) => warn!("gnss: rx error {}", e),
             Either::Second(()) => {
                 // PPS rising edge: the receiver is alive and marking the UTC
@@ -90,16 +97,28 @@ pub async fn task(
     }
 }
 
-/// Accumulate UART bytes into NMEA lines; on each complete line, parse RMC and
-/// discipline the clock on a valid fix.
-fn feed(chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut usize) {
+/// Accumulate UART bytes into NMEA lines; on each complete line, parse RMC and —
+/// on a valid fix — discipline the clock and latch geofence membership.
+fn feed(cfg: &config::Config, chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut usize) {
     for &b in chunk {
         if b == b'\n' || b == b'\r' {
             if *ll > 0 {
                 if let Some(fix) = ephemerkey_nmea::parse_rmc(&line[..*ll]) {
-                    gate::set_fix_valid(fix.valid);
+                    // A code may emit only from a valid fix INSIDE a fence. An
+                    // invalid/void fix (or one outside every zone) closes the
+                    // gate at once; the clock then ages out on its own.
+                    let in_fence = fix.valid && cfg.in_any_fence(fix.lat_e7, fix.lon_e7);
+                    gate::set_in_fence(in_fence);
                     if fix.valid {
                         clock::discipline_utc(fix.year, fix.month, fix.day, fix.hour, fix.min, fix.sec);
+                        info!(
+                            "gnss: fix {}.{:07},{}.{:07} in_fence={}",
+                            fix.lat_e7 / 10_000_000,
+                            (fix.lat_e7 % 10_000_000).abs(),
+                            fix.lon_e7 / 10_000_000,
+                            (fix.lon_e7 % 10_000_000).abs(),
+                            in_fence,
+                        );
                     }
                 }
                 *ll = 0;

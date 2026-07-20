@@ -23,6 +23,7 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod cbor;
+pub mod config;
 pub mod schema;
 
 use aes_gcm::aead::AeadInPlace;

@@ -33,36 +33,33 @@
 //! Provisioning writes arrive as FILES over USB or the WiFi (ESP32-C3) link —
 //! see `provision.rs`.
 //!
-//! Scaffold: compile-time defaults only; the flash journal is the next step.
+//! The sealed config is an integer-keyed CBOR map, decoded by the shared
+//! [`ephemerkey_envelope::config`] parser (host-tested there) into a fixed-size
+//! [`DeviceConfig`]: role, the emission-freshness window, and the geofence zone
+//! table. We re-export those types so the rest of the firmware speaks one
+//! vocabulary; [`load`] reads the newest committed record out of the flash
+//! journal and parses it, falling back to a **shut** default (Generator, no
+//! fences ⇒ never emits) on a factory-fresh or unparseable config.
 
-use defmt::Format;
+// `Role` is only named by the role-dispatch match, which is entirely
+// feature-gated (gnss / lock) — unused on a bare Nucleo build.
+#[allow(unused_imports)]
+pub use ephemerkey_envelope::config::{DeviceConfig as Config, Role, DEFAULT_STALENESS_S};
 
-#[derive(Copy, Clone, PartialEq, Eq, Format)]
-#[allow(dead_code)] // LockController is constructed by provisioning, not defaults
-pub enum Role {
-    /// GNSS-geofenced TOTP code generator.
-    Generator,
-    /// TOTP receiver driving the lock board over the LOCK I2C bus.
-    LockController,
-}
-
-#[derive(Copy, Clone, Format)]
-pub struct Config {
-    pub role: Role,
-    // TODO: geofence table (Generator), TOTP secret slot refs, lock pairing
-    // secret slot ref (LockController), RTC staleness window, log key.
-}
-
-impl Config {
-    const fn default() -> Self {
-        Self {
-            role: Role::Generator,
+/// Parse the committed config out of the flash journal. A factory-fresh device
+/// (empty record) or a config that fails to parse yields the shut default —
+/// the device links and runs, but a Generator emits nothing until a valid,
+/// fenced config is provisioned.
+pub fn load(journal: &crate::provision::DeviceJournal) -> Config {
+    let bytes = journal.config();
+    if bytes.is_empty() {
+        return Config::shut_default();
+    }
+    match ephemerkey_envelope::config::parse(bytes) {
+        Ok(cfg) => cfg,
+        Err(_) => {
+            defmt::warn!("config: stored blob failed to parse; running shut default");
+            Config::shut_default()
         }
     }
-}
-
-/// Load config. Scaffold: defaults. Real version reads the newest valid
-/// journal entry from the last 2x2KB flash pages (CRC + sequence).
-pub fn load() -> Config {
-    Config::default()
 }

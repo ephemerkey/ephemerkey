@@ -5,14 +5,19 @@
 //! talker (GP/GN/GL/GA/…), no_std / no-alloc, and host-tested — the STM32 GNSS
 //! task ([`crate::gnss`] in the firmware) feeds it line by line.
 //!
-//! Position and fix-quality (satellites / HDOP, from GGA/GSA) are a later
-//! addition for the geofence gate; RMC alone gets the clock going.
+//! RMC also carries position (lat/lon), which the firmware feeds to the
+//! geofence gate. Fix-quality (satellites / HDOP, from GGA/GSA) is a later
+//! addition; RMC alone gets the clock and the fence going.
 
 #![cfg_attr(not(test), no_std)]
 
-/// A parsed RMC fix: UTC wall-clock plus whether the receiver reports a valid
-/// position fix (`status == 'A'`). Only trust the time for disciplining the
-/// clock when `valid` is true.
+/// A parsed RMC fix: UTC wall-clock, position, and whether the receiver reports
+/// a valid position fix (`status == 'A'`). Only trust the time and position for
+/// disciplining the clock / testing the geofence when `valid` is true.
+///
+/// `lat_e7`/`lon_e7` are degrees × 10⁷ (north/east positive), matching
+/// `ephemerkey_envelope::config::Zone`. They are `0` when the sentence carries
+/// no position (a void fix), so gate them on `valid`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RmcFix {
     pub year: u16,
@@ -22,6 +27,8 @@ pub struct RmcFix {
     pub min: u8,
     pub sec: u8,
     pub valid: bool,
+    pub lat_e7: i32,
+    pub lon_e7: i32,
 }
 
 /// Parse one NMEA RMC sentence (leading `$`, trailing `*HH` checksum, optional
@@ -50,10 +57,10 @@ pub fn parse_rmc(line: &[u8]) -> Option<RmcFix> {
     }
     let time = f.next()?; // field 1: hhmmss(.sss)
     let status = f.next()?; // field 2: A/V
-    let _lat = f.next()?;
-    let _ns = f.next()?;
-    let _lon = f.next()?;
-    let _ew = f.next()?;
+    let lat = f.next()?; // field 3: ddmm.mmmm
+    let ns = f.next()?; // field 4: N/S
+    let lon = f.next()?; // field 5: dddmm.mmmm
+    let ew = f.next()?; // field 6: E/W
     let _spd = f.next()?;
     let _trk = f.next()?;
     let date = f.next()?; // field 9: ddmmyy
@@ -74,6 +81,13 @@ pub fn parse_rmc(line: &[u8]) -> Option<RmcFix> {
         return None;
     }
 
+    // Position is optional (empty on a void fix): parse leniently, defaulting
+    // to (0, 0). Callers only trust it when `valid`.
+    let (lat_e7, lon_e7) = match (coord_e7(lat, ns), coord_e7(lon, ew)) {
+        (Some(a), Some(o)) => (a, o),
+        _ => (0, 0),
+    };
+
     Some(RmcFix {
         year: 2000 + yy as u16,
         month,
@@ -82,7 +96,63 @@ pub fn parse_rmc(line: &[u8]) -> Option<RmcFix> {
         min,
         sec,
         valid: status == b"A",
+        lat_e7,
+        lon_e7,
     })
+}
+
+/// Convert an NMEA coordinate (`ddmm.mmmm` / `dddmm.mmmm`) plus its hemisphere
+/// (`N`/`S`/`E`/`W`) to degrees × 10⁷, sign by hemisphere. The last two integer
+/// digits are whole minutes; everything before them is degrees. Returns `None`
+/// for an empty/garbled field. All integer math (no FPU on the M0+).
+fn coord_e7(field: &[u8], hemi: &[u8]) -> Option<i32> {
+    if field.is_empty() {
+        return None;
+    }
+    let dot = field.iter().position(|&b| b == b'.').unwrap_or(field.len());
+    let int_part = &field[..dot];
+    if int_part.len() < 3 {
+        return None; // need at least d + mm
+    }
+    let (deg_s, min_s) = int_part.split_at(int_part.len() - 2);
+    let deg = uint(deg_s)? as i64;
+    let min_int = uint(min_s)? as i64;
+
+    // Fractional minutes, accumulated to a fixed 10⁵ scale (minutes × 1e5).
+    let mut min_frac = 0i64;
+    if dot < field.len() {
+        let mut scale = 100_000i64;
+        for &c in &field[dot + 1..] {
+            let d = digit(c)? as i64;
+            scale /= 10;
+            if scale == 0 {
+                break; // ignore precision past 5 decimals
+            }
+            min_frac += d * scale;
+        }
+    }
+    let minutes_scaled = min_int * 100_000 + min_frac; // minutes × 1e5
+
+    // degrees×1e7 = deg×1e7 + minutes/60×1e7 = deg×1e7 + minutes_scaled×10/6.
+    let e7 = deg * 10_000_000 + minutes_scaled * 10 / 6;
+    let signed = match hemi {
+        b"S" | b"W" => -e7,
+        _ => e7,
+    };
+    Some(signed as i32)
+}
+
+/// Parse an all-ASCII-digit field as a `u32` (any length). `None` if empty or
+/// non-digit.
+fn uint(b: &[u8]) -> Option<u32> {
+    if b.is_empty() {
+        return None;
+    }
+    let mut v = 0u32;
+    for &c in b {
+        v = v.checked_mul(10)?.checked_add(digit(c)? as u32)?;
+    }
+    Some(v)
 }
 
 fn trim(mut s: &[u8]) -> &[u8] {
@@ -136,18 +206,30 @@ mod tests {
     #[test]
     fn classic_valid_fix() {
         // The canonical NMEA RMC example (checksum 6A).
+        // 4807.038 N = 48° 07.038′ = 48.1173° → 481_173_000 e7.
+        // 01131.000 E = 11° 31.000′ = 11.516666…° → 115_166_666 e7.
         let s = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A";
         let f = parse_rmc(s).unwrap();
         assert_eq!(
             f,
-            RmcFix { year: 2094, month: 3, day: 23, hour: 12, min: 35, sec: 19, valid: true }
+            RmcFix {
+                year: 2094,
+                month: 3,
+                day: 23,
+                hour: 12,
+                min: 35,
+                sec: 19,
+                valid: true,
+                lat_e7: 481_173_000,
+                lon_e7: 115_166_666,
+            }
         );
     }
 
     #[test]
     fn gnss_talker_and_crlf_and_frac_seconds() {
         // $GNRMC with fractional seconds and a trailing CRLF (checksum computed
-        // over the body between '$' and '*').
+        // over the body between '$' and '*'). Southern & eastern hemisphere.
         let body = b"GNRMC,081836.00,A,3751.65,S,14507.36,E,000.0,360.0,130226,011.3,E";
         let cs = body.iter().fold(0u8, |a, &b| a ^ b);
         let mut line = alloc_line(body, cs);
@@ -157,6 +239,10 @@ mod tests {
         assert_eq!((f.month, f.day), (2, 13));
         assert_eq!((f.hour, f.min, f.sec), (8, 18, 36));
         assert!(f.valid);
+        // 3751.65 S = 37° 51.65′ = 37.860833…° → −378_608_333 e7.
+        // 14507.36 E = 145° 07.36′ = 145.122666…° → 1_451_226_666 e7.
+        assert_eq!(f.lat_e7, -378_608_333);
+        assert_eq!(f.lon_e7, 1_451_226_666);
     }
 
     #[test]
@@ -167,6 +253,8 @@ mod tests {
         let f = parse_rmc(&line).unwrap();
         assert!(!f.valid);
         assert_eq!((f.year, f.month, f.day), (2000, 1, 1));
+        // No position in a void fix → (0, 0).
+        assert_eq!((f.lat_e7, f.lon_e7), (0, 0));
     }
 
     #[test]

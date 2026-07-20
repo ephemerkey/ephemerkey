@@ -747,6 +747,7 @@ name = "ephemerkey-envelope"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "defmt 1.1.1",
  "ed25519-dalek",
  "hkdf",
  "sha2",

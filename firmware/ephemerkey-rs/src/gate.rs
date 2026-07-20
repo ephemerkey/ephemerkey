@@ -1,33 +1,49 @@
 //! Code-emission readiness gate.
 //!
-//! A generator may emit a TOTP only when **the clock is fresh** (disciplined by
-//! GNSS within the staleness window — a frozen or rolled-back clock must never
-//! yield valid codes, DESIGN §Security) **and the GNSS reports a valid fix**.
-//! This is the software half of DESIGN's "valid fix ∧ in-fence ∧ fresh clock"
-//! guard; the in-fence (geofence) test joins [`may_emit`] once the zone table
-//! is parsed from the sealed config.
+//! A generator may emit a TOTP only when the **last GNSS fix was valid, inside
+//! an authorized geofence, and recent enough** — DESIGN's "valid fix ∧ in-fence
+//! ∧ fresh clock" guard. On this device the GNSS is powered on-demand (the user
+//! presses a button, we acquire one fix, then the receiver powers back down),
+//! so there is no continuous PPS to lean on: freshness is measured from that
+//! last acquired fix via the RTC's last-discipline time ([`clock::is_fresh`]).
+//! When the fix ages past the staleness window, the gate closes on its own — a
+//! frozen or rolled-back clock, or a device carried out of the fence and left
+//! sitting, must never keep yielding codes.
+//!
+//! Both inputs are latched here by the GNSS task ([`crate::gnss`]): the RTC is
+//! disciplined and [`set_in_fence`] is called together on each fix. The gate
+//! itself just reads the latch and asks the clock whether it is still fresh.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use embassy_time::Duration;
 
 use crate::clock;
+use crate::config;
 
-/// Maximum age of the last GNSS clock discipline before codes are refused —
-/// 3× the 30 s TOTP period. (DESIGN calls this a configurable window; a config
-/// field can override it once integer-keyed configs land.)
-pub const STALENESS: Duration = Duration::from_secs(90);
+/// Whether the *last* GNSS fix was both valid and inside an authorized fence.
+/// A void fix, or a valid fix outside every fence, clears this immediately.
+static IN_FENCE: AtomicBool = AtomicBool::new(false);
 
-/// Last GNSS fix validity (RMC status). Updated by the GNSS task.
-static FIX_VALID: AtomicBool = AtomicBool::new(false);
+/// Emission-freshness window (seconds): the maximum age of the last fix before
+/// codes are refused. Loaded from the sealed config at boot ([`configure`]);
+/// defaults to the config crate's default until then.
+static STALENESS_S: AtomicU32 = AtomicU32::new(config::DEFAULT_STALENESS_S);
 
-/// Record the receiver's fix validity (RMC 'A' vs 'V').
-pub fn set_fix_valid(valid: bool) {
-    FIX_VALID.store(valid, Ordering::Relaxed);
+/// Apply the sealed config to the gate — currently just the staleness window.
+pub fn configure(cfg: &config::Config) {
+    STALENESS_S.store(cfg.staleness_s, Ordering::Relaxed);
 }
 
-/// Whether the device may currently emit a TOTP: a valid fix and a
-/// recently-disciplined clock. Geofence membership is still TODO.
+/// Record whether the latest fix places the device inside a fence. Called by
+/// the GNSS task with `valid_fix && config.in_any_fence(lat, lon)`.
+pub fn set_in_fence(in_fence: bool) {
+    IN_FENCE.store(in_fence, Ordering::Relaxed);
+}
+
+/// Whether the device may currently emit a TOTP: the last fix was in-fence and
+/// the clock (disciplined at that fix) is still fresh.
 pub fn may_emit() -> bool {
-    FIX_VALID.load(Ordering::Relaxed) && clock::is_fresh(STALENESS)
+    IN_FENCE.load(Ordering::Relaxed)
+        && clock::is_fresh(Duration::from_secs(STALENESS_S.load(Ordering::Relaxed) as u64))
 }
