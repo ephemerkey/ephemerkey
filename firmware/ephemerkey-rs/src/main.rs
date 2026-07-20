@@ -189,7 +189,9 @@ async fn main(spawner: Spawner) {
             {
                 let engine = ephemerkey_config::build_lock(&cfg);
                 let _validator = ephemerkey_config::build_validator(&cfg);
-                spawner.spawn(lockconsole::task(p.USB, p.PA12, p.PA11, engine).unwrap());
+                spawner.spawn(
+                    lockconsole::task(p.USB, p.PA12, p.PA11, engine, cfg.calendars()).unwrap(),
+                );
             }
         }
         #[allow(unreachable_patterns)]

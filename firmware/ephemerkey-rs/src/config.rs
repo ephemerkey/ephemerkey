@@ -17,10 +17,10 @@ pub use ephemerkey_envelope::config::{Zone, DEFAULT_STALENESS_S, MAX_ZONES};
 
 /// Policy features this firmware actually honors. A config whose `crit` list
 /// names anything else is refused at parse (never silently drop a protection).
-/// `zones` = the geofence gate is implemented; `calendars` is not yet, so it is
-/// deliberately absent.
+/// `zones` = the generator geofence gate; `calendars` = the RTC-evaluated
+/// calendar gate on the lock.
 pub const FIRMWARE_FEATURES: &[&str] =
-    &["seq-jitter", "quorum-pace", "chain", "veto", "budget", "zones"];
+    &["seq-jitter", "quorum-pace", "chain", "veto", "budget", "zones", "calendars"];
 
 /// Parse the committed config out of the flash journal. Empty (factory-fresh)
 /// or unparseable ⇒ the shut default: the device links and runs, but emits

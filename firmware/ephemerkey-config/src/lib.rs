@@ -56,6 +56,52 @@ pub use ephemerkey_envelope::config::{Role, Zone, DEFAULT_STALENESS_S, MAX_RADIU
 /// the firmware and emulator each pass their own capability list to [`parse`].
 pub const SUPPORTED_FEATURES: &[&str] = &["seq-jitter", "quorum-pace", "chain", "veto", "budget"];
 
+/// Most calendar windows a single config may carry (fixed RAM footprint).
+pub const MAX_CALENDARS: usize = 8;
+
+/// A recurring time-of-week window. `days_mask` bit `i` = weekday `i` is active
+/// (0 = Sunday … 6 = Saturday); `[start_min, end_min)` is the open interval in
+/// minutes from midnight (UTC). Non-wrapping — a window that crosses midnight is
+/// two entries.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub struct CalWindow {
+    pub days_mask: u8,
+    pub start_min: u16,
+    pub end_min: u16,
+}
+
+impl CalWindow {
+    /// Whether this window is open at `now_unix` (UTC). 1970-01-01 was a
+    /// Thursday, so `weekday = (days + 4) mod 7` with 0 = Sunday.
+    pub fn open_at(&self, now_unix: u64) -> bool {
+        let weekday = (((now_unix / 86_400) % 7 + 4) % 7) as u8;
+        if self.days_mask & (1 << weekday) == 0 {
+            return false;
+        }
+        let minute = ((now_unix % 86_400) / 60) as u16;
+        self.start_min <= minute && minute < self.end_min
+    }
+}
+
+/// A device's calendar table, snapshotted for a
+/// [`Sensors`](ephemerkey_core::policy::Sensors) implementation: `open(window,
+/// now)` answers the engine's `calendar_open` gate from the config windows plus
+/// the current clock.
+#[derive(Copy, Clone, Default)]
+pub struct Calendars {
+    wins: [Option<CalWindow>; MAX_CALENDARS],
+}
+
+impl Calendars {
+    pub fn open(&self, window: u8, now_unix: u64) -> bool {
+        self.wins
+            .get(window as usize)
+            .and_then(|w| *w)
+            .map(|w| w.open_at(now_unix))
+            .unwrap_or(false)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Malformed CBOR, wrong type, or a missing required field.
@@ -106,6 +152,7 @@ pub struct DeviceModel {
     zone_count: usize,
     keys: [Option<KeyEntry>; MAX_KEYS],
     slots: [Option<Slot>; MAX_SLOTS],
+    calendars: [Option<CalWindow>; MAX_CALENDARS],
     confirm: Option<ConfirmEntry>,
 }
 
@@ -125,8 +172,15 @@ impl DeviceModel {
             zone_count: 0,
             keys: [None; MAX_KEYS],
             slots: [None; MAX_SLOTS],
+            calendars: [None; MAX_CALENDARS],
             confirm: None,
         }
+    }
+
+    /// A snapshot of the calendar table for a `Sensors` impl to evaluate the
+    /// `calendar_open` gate against the clock.
+    pub fn calendars(&self) -> Calendars {
+        Calendars { wins: self.calendars }
     }
 
     /// The configured geofence zones.
@@ -159,7 +213,7 @@ pub fn parse(cbor: &[u8], known_features: &[&str]) -> Result<DeviceModel, Error>
             3 => parse_zones(&mut d, &mut m)?,
             4 => parse_keys(&mut d, &mut m)?,
             5 => parse_slots(&mut d, &mut m)?,
-            6 => d.skip()?, // calendars: reserved (firmware has no window table yet)
+            6 => parse_calendars(&mut d, &mut m)?,
             7 => m.confirm = Some(parse_confirm(&mut d)?),
             8 => check_crit(&mut d, known_features)?,
             _ => d.skip()?,
@@ -560,6 +614,32 @@ fn parse_negative(d: &mut Dec) -> Result<NegativeAction, Error> {
     Ok(neg)
 }
 
+fn parse_calendars(d: &mut Dec, m: &mut DeviceModel) -> Result<(), Error> {
+    let cn = d.array()?;
+    for i in 0..cn as usize {
+        let win = parse_calendar(d)?;
+        if i >= MAX_CALENDARS {
+            return Err(Error::TooLong);
+        }
+        m.calendars[i] = Some(win);
+    }
+    Ok(())
+}
+
+fn parse_calendar(d: &mut Dec) -> Result<CalWindow, Error> {
+    let n = d.map()?;
+    let mut w = CalWindow::default();
+    for _ in 0..n {
+        match d.uint()? {
+            1 => w.days_mask = d.uint()? as u8,
+            2 => w.start_min = d.uint()? as u16,
+            3 => w.end_min = d.uint()? as u16,
+            _ => d.skip()?,
+        }
+    }
+    Ok(w)
+}
+
 fn parse_confirm(d: &mut Dec) -> Result<ConfirmEntry, Error> {
     let n = d.map()?;
     let mut secret = [0u8; MAX_SECRET];
@@ -791,6 +871,93 @@ mod tests {
         // the revealed code matches the key's TOTP
         assert_eq!(r.code, totp_at(b"GENSECRET", NOW, 6));
         assert!(build_validator(&m).is_some());
+    }
+
+    #[test]
+    fn calendar_window_evaluation() {
+        // Mon–Fri (bits 1..=5), 09:00–17:00.
+        let w = CalWindow { days_mask: 0b0111_1110, start_min: 540, end_min: 1020 };
+        // 2024-01-01 00:00 UTC was a Monday (unix 1_704_067_200).
+        let mon = 1_704_067_200u64;
+        assert!(w.open_at(mon + 10 * 3600)); // Mon 10:00 — open
+        assert!(!w.open_at(mon + 8 * 3600)); // Mon 08:00 — before window
+        assert!(!w.open_at(mon + 18 * 3600)); // Mon 18:00 — after window
+        assert!(!w.open_at(mon + 6 * 86_400 + 10 * 3600)); // Sunday 10:00 — wrong day
+    }
+
+    #[test]
+    fn calendar_gates_a_slot() {
+        // A lock whose always-valid slot is gated on calendar window 0.
+        let mut buf = [0u8; 256];
+        let mut e = Enc::new(&mut buf);
+        e.map(4).unwrap();
+        e.uint(1).unwrap();
+        e.uint(2).unwrap(); // role lock
+        e.uint(4).unwrap(); // keys
+        e.array(1).unwrap();
+        e.map(2).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(b"CALKEY").unwrap();
+        e.uint(2).unwrap();
+        e.uint(6).unwrap();
+        e.uint(5).unwrap(); // slots
+        e.array(1).unwrap();
+        e.map(4).unwrap();
+        e.uint(1).unwrap();
+        e.uint(0).unwrap(); // key 0
+        e.uint(3).unwrap(); // policy
+        e.map(1).unwrap();
+        e.uint(1).unwrap();
+        e.uint(0).unwrap(); // always
+        e.uint(6).unwrap(); // negative
+        e.array(1).unwrap();
+        e.uint(0).unwrap(); // reset
+        e.uint(7).unwrap(); // gates
+        e.map(1).unwrap();
+        e.uint(3).unwrap();
+        e.uint(0).unwrap(); // calendar window 0
+        e.uint(6).unwrap(); // calendars
+        e.array(1).unwrap();
+        e.map(3).unwrap();
+        e.uint(1).unwrap();
+        e.uint(0b0111_1110).unwrap(); // Mon–Fri
+        e.uint(2).unwrap();
+        e.uint(540).unwrap(); // 09:00
+        e.uint(3).unwrap();
+        e.uint(1020).unwrap(); // 17:00
+        let n = e.len();
+
+        let m = parse(&buf[..n], FW).unwrap();
+        let cals = m.calendars();
+        let mut lock = build_lock(&m);
+        let mon = 1_704_067_200u64;
+
+        struct Env(Calendars, u64);
+        impl ephemerkey_core::policy::Sensors for Env {
+            fn inside_fence(&self, _: u8) -> bool {
+                true
+            }
+            fn still_for_s(&self) -> u32 {
+                u32::MAX
+            }
+            fn calendar_open(&self, w: u8) -> bool {
+                self.0.open(w, self.1)
+            }
+        }
+
+        let mut cb = [0u8; 10];
+        // Monday 10:00 — window open → fires.
+        let open = mon + 10 * 3600;
+        let out = lock.enter_code_with(code_str(b"CALKEY", open, 6, &mut cb), open, &Env(cals, open));
+        assert!(matches!(out, Outcome::Fired(0, Action::Unlock)), "open: {:?}", out);
+        // Monday 20:00 — window shut → gated (and NOT burned).
+        let shut = mon + 20 * 3600;
+        let out = lock.enter_code_with(code_str(b"CALKEY", shut, 6, &mut cb), shut, &Env(cals, shut));
+        assert!(
+            matches!(out, Outcome::Gated(0, ephemerkey_core::policy::GateBlock::Calendar)),
+            "shut: {:?}",
+            out
+        );
     }
 
     #[test]

@@ -12,5 +12,8 @@
       "reset_on_invalid": false,
       "gates": { "fence": 0, "stillness_s": 20, "calendar": 0 }
     }
+  ],
+  "calendars": [
+    { "days": [1, 2, 3, 4, 5], "start": "09:00", "end": "17:00" }
   ]
 }

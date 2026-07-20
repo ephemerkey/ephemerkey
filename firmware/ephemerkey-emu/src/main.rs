@@ -27,6 +27,7 @@ use ephemerkey_core::policy::{Action, Sensors};
 use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Validator};
 use ephemerkey_core::totp::Code;
 use ephemerkey_core::reveal::{ChainErr, DisplayMode, Generator, RevealErr};
+use ephemerkey_config::Calendars;
 use serde::Deserialize;
 use std::io::BufRead;
 
@@ -49,6 +50,21 @@ struct Scenario {
     /// The lock's own confirm-TOTP identity (receipts it mints on every
     /// fire/relock). Absent = the lock stays silent.
     confirm: Option<ConfirmCfg>,
+    /// Calendar windows the slot `calendar` gates reference (time-of-week).
+    #[serde(default)]
+    calendars: Vec<CalendarCfg>,
+}
+
+/// A recurring time-of-week window: `days` (0 = Sunday … 6 = Saturday) plus a
+/// `HH:MM`–`HH:MM` interval. Mirrors the console's CalendarWindow.
+#[derive(Deserialize)]
+struct CalendarCfg {
+    #[serde(default)]
+    days: Vec<u8>,
+    #[serde(default)]
+    start: String,
+    #[serde(default)]
+    end: String,
 }
 fn default_start() -> u64 {
     1_750_000_000
@@ -272,7 +288,7 @@ pub fn known_features() -> Vec<&'static str> {
 /// firmware does on a sealed config. So the emulator exercises the same CBOR
 /// path the device ships (no separate mapping to drift out of sync), and its
 /// simulation genuinely runs on CBOR data.
-fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
+fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>, Calendars) {
     for c in &scn.crit {
         assert!(
             known_features().contains(&c.as_str()),
@@ -286,6 +302,7 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>) {
         ephemerkey_config::build_generator(&model),
         ephemerkey_config::build_lock(&model),
         ephemerkey_config::build_validator(&model),
+        model.calendars(),
     )
 }
 
@@ -301,6 +318,7 @@ fn scenario_to_cbor(scn: &Scenario) -> Vec<u8> {
     let mut top = 1u64; // role
     top += !scn.keys.is_empty() as u64;
     top += !scn.slots.is_empty() as u64;
+    top += !scn.calendars.is_empty() as u64;
     top += scn.confirm.is_some() as u64;
     top += !scn.crit.is_empty() as u64;
     e.map(top).unwrap();
@@ -318,6 +336,19 @@ fn scenario_to_cbor(scn: &Scenario) -> Vec<u8> {
         e.array(scn.slots.len() as u64).unwrap();
         for s in &scn.slots {
             enc_slot(&mut e, s);
+        }
+    }
+    if !scn.calendars.is_empty() {
+        e.uint(6).unwrap();
+        e.array(scn.calendars.len() as u64).unwrap();
+        for c in &scn.calendars {
+            e.map(3).unwrap();
+            e.uint(1).unwrap();
+            e.uint(days_mask(&c.days)).unwrap();
+            e.uint(2).unwrap();
+            e.uint(hhmm_min(&c.start)).unwrap();
+            e.uint(3).unwrap();
+            e.uint(hhmm_min(&c.end)).unwrap();
         }
     }
     if let Some(c) = &scn.confirm {
@@ -558,12 +589,27 @@ fn mode_u(m: ReceiptModeCfg) -> u64 {
     }
 }
 
+/// Days list (0 = Sunday … 6 = Saturday) → the bit-`i`-per-day mask.
+fn days_mask(days: &[u8]) -> u64 {
+    days.iter().filter(|&&d| d < 7).fold(0u64, |m, &d| m | (1 << d))
+}
+
+/// `"HH:MM"` → minutes from midnight.
+fn hhmm_min(s: &str) -> u64 {
+    let mut it = s.split(':');
+    let h: u64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    let m: u64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    h * 60 + m
+}
+
 // ------------------------------------------------------------------- env
 
 /// Virtual GNSS / accelerometer / RTC the gates evaluate against. Firmware
-/// implements `Sensors` over real hardware; here the `env` commands drive it.
-/// Defaults are deliberately "shut": out of every fence, moving, every
-/// calendar window closed — so a gated slot genuinely gates until the script
+/// implements `Sensors` over real hardware; here the `env` commands drive the
+/// position/motion inputs. The CALENDAR gate is NOT faked — like the firmware,
+/// it is evaluated from the config's windows against the (virtual) clock, so
+/// `time set` moves in and out of a window. Position/motion default "shut" (out
+/// of every fence, moving) so a gated slot genuinely gates until the script
 /// puts the lock where it needs to be.
 #[derive(Default)]
 struct Env {
@@ -571,8 +617,10 @@ struct Env {
     fences: u64,
     /// seconds the lock has been continuously still
     still_s: u32,
-    /// bit w set => calendar window w is open
-    calendars: u64,
+    /// calendar windows from the config, evaluated against `now`
+    calendars: Calendars,
+    /// current virtual unix time (synced from the emu clock before each entry)
+    now: u64,
 }
 impl Sensors for Env {
     fn inside_fence(&self, fence: u8) -> bool {
@@ -582,7 +630,7 @@ impl Sensors for Env {
         self.still_s
     }
     fn calendar_open(&self, window: u8) -> bool {
-        self.calendars & (1 << window) != 0
+        self.calendars.open(window, self.now)
     }
 }
 
@@ -649,6 +697,7 @@ impl Emu {
                 } else {
                     (*code).to_string()
                 };
+                self.env.now = self.now; // the calendar gate reads the clock
                 let out = self.lock.enter_code_with(&code, self.now, &self.env);
                 let s = describe(out);
                 self.event(format!("lock: {s}"));
@@ -771,11 +820,11 @@ impl Emu {
         }
     }
 
-    /// Drive the virtual GNSS/accel/RTC the slot gates read.
+    /// Drive the virtual GNSS/accel the slot gates read. (The calendar gate is
+    /// time-driven from the config — move it with `time set`/`time +`.)
     ///   env fence <idx> <in|out>   move the lock in/out of a geofence
     ///   env still <secs>           set how long it's been motionless
-    ///   env cal <idx> <open|shut>  open/close a calendar window
-    ///   env show                   print the current environment
+    ///   env show                   print the environment + open calendar windows
     fn cmd_env(&mut self, words: &[&str]) {
         match words {
             ["env", "fence", idx, state] => {
@@ -791,23 +840,24 @@ impl Emu {
                 self.env.still_s = secs.parse().expect("stillness secs");
                 self.event(format!("env: still for {}s", self.env.still_s));
             }
-            ["env", "cal", idx, state] => {
-                let b = 1u64 << idx.parse::<u8>().expect("calendar idx");
-                match *state {
-                    "open" => self.env.calendars |= b,
-                    "shut" | "closed" => self.env.calendars &= !b,
-                    _ => return println!("? env cal <idx> <open|shut>"),
-                }
-                self.event(format!("env: calendar {idx} {state}"));
-            }
             ["env", "show"] => {
+                // Calendar windows are time-driven from the config; list which
+                // are open right now (use `time set`/`time +` to move windows).
+                let mut open = String::new();
+                for w in 0..ephemerkey_config::MAX_CALENDARS as u8 {
+                    if self.env.calendars.open(w, self.now) {
+                        open.push_str(&format!("{w} "));
+                    }
+                }
                 let s = format!(
-                    "env: fences=0x{:x} still={}s calendars=0x{:x}",
-                    self.env.fences, self.env.still_s, self.env.calendars
+                    "env: fences=0x{:x} still={}s calendars-open=[{}]",
+                    self.env.fences,
+                    self.env.still_s,
+                    open.trim_end()
                 );
                 self.event(s);
             }
-            _ => println!("? env fence <i> <in|out> | env still <s> | env cal <i> <open|shut> | env show"),
+            _ => println!("? env fence <i> <in|out> | env still <s> | env show (calendars are time-driven)"),
         }
     }
 
@@ -961,13 +1011,13 @@ fn main() {
     let scn: Scenario =
         serde_json::from_str(&std::fs::read_to_string(&arg).expect("read scenario"))
             .expect("parse scenario");
-    let (gen, lock, validator) = build(&scn);
+    let (gen, lock, validator, calendars) = build(&scn);
     let mut emu = Emu {
         now: scn.start_time,
         seed: scn.seed,
         gen,
         lock,
-        env: Env::default(),
+        env: Env { calendars, ..Default::default() },
         validator,
         last_event: String::new(),
         failures: 0,
