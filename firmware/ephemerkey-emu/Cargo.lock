@@ -204,6 +204,7 @@ dependencies = [
  "ephemerkey-crc",
  "ephemerkey-envelope",
  "ephemerkey-frame",
+ "ephemerkey-ui",
  "serde",
  "serde_json",
  "sha2",
@@ -223,6 +224,10 @@ dependencies = [
 
 [[package]]
 name = "ephemerkey-frame"
+version = "0.1.0"
+
+[[package]]
+name = "ephemerkey-ui"
 version = "0.1.0"
 
 [[package]]

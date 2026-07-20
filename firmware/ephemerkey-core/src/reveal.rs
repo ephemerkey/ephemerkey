@@ -182,6 +182,12 @@ impl Generator {
         now < self.unlocked_until
     }
 
+    /// Seconds until the reveal window closes (0 = closed). Feeds the UNLOCKED
+    /// display's countdown, on device and in the emulator.
+    pub fn unlock_secs_left(&self, now: u64) -> u32 {
+        self.unlocked_until.saturating_sub(now).min(u32::MAX as u64) as u32
+    }
+
     /// Request a code reveal for key `idx` at unix `now`. `entropy` feeds
     /// the scatter order (firmware: TRNG; emulator: seeded PRNG).
     pub fn reveal(&mut self, idx: usize, now: u64, entropy: u32) -> Result<Reveal, RevealErr> {

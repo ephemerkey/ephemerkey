@@ -1,0 +1,8 @@
+[package]
+name = "ephemerkey-ui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey generator display model: a View -> character Screen the firmware blits to the OLED and the emulator paints to the terminal (no_std, zero deps)"
+
+[dependencies]

@@ -13,6 +13,10 @@
 //!   gen reveal [key]        request a code reveal (default key 0)
 //!   gen unlock <code|@N>    cascade: dial a code into the generator's unlock
 //!                           ritual (@N = a predecessor device's code)
+//!   gen dial <d…>|bs|clr|go simulate the 3-button dial (shows the display);
+//!                           `go` submits the dialed code to the ritual
+//!   gen key <n>             select key n in the UNLOCKED display
+//!   gen screen              paint the generator's current OLED face
 //!   gen next [key]          seconds until the next REAL reveal
 //!   lock enter <code|@N>    type a code at the lock (@N = Nth revealed
 //!                           code, 1-based — the "written down" notebook)
@@ -30,6 +34,7 @@ use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Validator};
 use ephemerkey_core::totp::Code;
 use ephemerkey_core::reveal::{ChainErr, DisplayMode, Generator, RevealErr};
 use ephemerkey_config::Calendars;
+use ephemerkey_ui::{render, Screen, View, COLS, ROWS};
 use serde::Deserialize;
 use std::io::BufRead;
 
@@ -684,6 +689,11 @@ struct Emu {
     validator: Option<Validator>,
     last_event: String,
     failures: u32,
+    /// The digits dialed so far on the (simulated) 3-button keypad — feeds the
+    /// `Dialing` display view; submitted with `gen dial go`.
+    dial: Vec<u8>,
+    /// Selected key in the UNLOCKED display view (`gen key <n>`).
+    sel: u8,
     /// Every code the generator has shown, in order — the user's notebook.
     notebook: Vec<String>,
     /// Every receipt the lock has emitted, in order — relay with `validate @R`.
@@ -694,6 +704,32 @@ impl Emu {
     fn event(&mut self, s: String) {
         println!("[t={}] {}", self.now, s);
         self.last_event = s;
+    }
+
+    /// Print a [`Screen`] inside a little bezel — pixel-for-cell what the 128×32
+    /// OLED shows. This is the SAME `ephemerkey-ui` render the firmware blits, so
+    /// what you see here is what the device draws.
+    fn paint(&self, screen: &Screen) {
+        println!("    ┌{}┐", "─".repeat(COLS));
+        for r in 0..ROWS {
+            let line: String = screen.cells[r].iter().map(|&c| c as char).collect();
+            println!("    │{line}│");
+        }
+        println!("    └{}┘", "─".repeat(COLS));
+    }
+
+    /// Paint the generator's current display: a pending dial in progress, an
+    /// open reveal window, or the idle/locked face.
+    fn paint_screen(&self) {
+        let view = if !self.dial.is_empty() {
+            let (entered, cur) = self.dial.split_at(self.dial.len() - 1);
+            View::Dialing { entered, cur: cur[0] }
+        } else if self.gen.is_unlocked(self.now) {
+            View::Unlocked { key: self.sel, secs_left: self.gen.unlock_secs_left(self.now) }
+        } else {
+            View::Locked
+        };
+        self.paint(&render(&view));
     }
 
     fn cmd(&mut self, line: &str) -> bool {
@@ -717,6 +753,12 @@ impl Emu {
                 let k: usize = k.parse().unwrap_or(0);
                 self.cmd_chain(code, k)
             }
+            ["gen", "dial", rest @ ..] => self.cmd_dial(rest),
+            ["gen", "key", n] => {
+                self.sel = n.parse().unwrap_or(0);
+                self.paint_screen();
+            }
+            ["gen", "screen"] => self.paint_screen(),
             ["gen", "unlock", code] => self.cmd_unlock(code),
             ["gen", "reveal"] => self.cmd_reveal(0),
             ["gen", "reveal", k] => self.cmd_reveal(k.parse().unwrap_or(0)),
@@ -925,6 +967,46 @@ impl Emu {
             String::new()
         };
         self.event(format!("gen unlock: {s}{win}"));
+        match out {
+            Outcome::Progress(_, h, n) => self.paint(&render(&View::Progress { have: h, need: n })),
+            Outcome::Fired(..) => {
+                // the ritual completed — the dial is spent
+                self.dial.clear();
+                self.paint_screen();
+            }
+            _ => self.paint_screen(),
+        }
+    }
+
+    /// Simulate the 3-button dial for the display:
+    ///   gen dial <digits…>   append digits (e.g. `gen dial 4 7 1`)
+    ///   gen dial bs | clr    backspace / clear
+    ///   gen dial go          submit the dialed code to the ritual
+    fn cmd_dial(&mut self, args: &[&str]) {
+        match args {
+            ["bs"] => {
+                self.dial.pop();
+            }
+            ["clr"] => self.dial.clear(),
+            ["go"] => {
+                if self.dial.is_empty() {
+                    return self.event("gen: dial empty".into());
+                }
+                let code: String = self.dial.iter().map(|&d| (b'0' + d) as char).collect();
+                self.dial.clear();
+                return self.cmd_unlock(&code);
+            }
+            digits => {
+                for tok in digits {
+                    for ch in tok.chars() {
+                        if let Some(d) = ch.to_digit(10) {
+                            self.dial.push(d as u8);
+                        }
+                    }
+                }
+            }
+        }
+        self.paint_screen();
     }
 
     fn cmd_reveal(&mut self, k: usize) {
@@ -941,10 +1023,9 @@ impl Emu {
                     if r.decoy { " DECOY" } else { "" }
                 ));
                 match r.mode {
+                    // Plain reveal = the OLED face, through the shared render.
                     DisplayMode::Plain => {
-                        println!("  ┌{}┐", "─".repeat(code.len() + 2));
-                        println!("  │ {code} │  ({}s)", r.reveal_s);
-                        println!("  └{}┘", "─".repeat(code.len() + 2));
+                        self.paint(&render(&View::Reveal { code: &code, secs_left: r.reveal_s }))
                     }
                     DisplayMode::Scatter => {
                         let n = r.code.digits as usize;
@@ -1092,6 +1173,8 @@ fn main() {
         validator,
         last_event: String::new(),
         failures: 0,
+        dial: Vec::new(),
+        sel: 0,
         notebook: Vec::new(),
         receipts: Vec::new(),
     };

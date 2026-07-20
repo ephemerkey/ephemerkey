@@ -54,14 +54,13 @@ fn load_or_init(path: &str) -> State {
     }
     let mut id = [0u8; 12];
     getrandom(&mut id);
-    let st = State {
+    State {
         device_id: hex(&id),
         sign_priv: hex(&rand32()),
         kx_priv: hex(&rand32()),
         fw: "ekemu-0.1".into(),
         ..Default::default()
-    };
-    st
+    }
 }
 
 fn save(path: &str, st: &State) {
