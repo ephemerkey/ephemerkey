@@ -34,7 +34,7 @@ use ephemerkey_core::receipt::{Receipt, ReceiptCheck, ReceiptMode, Validator};
 use ephemerkey_core::totp::Code;
 use ephemerkey_core::reveal::{ChainErr, DisplayMode, Generator, RevealErr};
 use ephemerkey_config::Calendars;
-use ephemerkey_ui::{render, Screen, View, COLS, ROWS};
+use ephemerkey_ui::{render, Align, Screen, Size, View};
 use serde::Deserialize;
 use std::io::BufRead;
 
@@ -706,16 +706,38 @@ impl Emu {
         self.last_event = s;
     }
 
-    /// Print a [`Screen`] inside a little bezel — pixel-for-cell what the 128×32
-    /// OLED shows. This is the SAME `ephemerkey-ui` render the firmware blits, so
-    /// what you see here is what the device draws.
+    /// Preview a [`Screen`] in a wide, short bezel matching the 128×32 panel.
+    /// This is the SAME `ephemerkey-ui` render the firmware blits, so the layout
+    /// you see is the device's; a terminal can't scale fonts, so BIG lines are
+    /// drawn wider (spaced glyphs) and one row taller to stand in for the font.
     fn paint(&self, screen: &Screen) {
-        println!("    ┌{}┐", "─".repeat(COLS));
-        for r in 0..ROWS {
-            let line: String = screen.cells[r].iter().map(|&c| c as char).collect();
-            println!("    │{line}│");
+        const W: usize = 32; // ~4 px per column across the 128 px face
+        let mut rows: Vec<String> = Vec::new();
+        for line in screen.lines() {
+            let big = line.size() == Size::Big;
+            let text: String = if big {
+                // spaced glyphs ≈ the ~1.7× width of the big font
+                line.text().chars().map(|c| format!("{c} ")).collect::<String>().trim_end().into()
+            } else {
+                line.text().into()
+            };
+            let text: String = text.chars().take(W).collect();
+            let pad = W - text.chars().count();
+            let left = match line.align() {
+                Align::Left => 0,
+                Align::Center => pad / 2,
+                Align::Right => pad,
+            };
+            rows.push(format!("{}{text}{}", " ".repeat(left), " ".repeat(pad - left)));
+            if big {
+                rows.push(" ".repeat(W)); // the big line is twice as tall
+            }
         }
-        println!("    └{}┘", "─".repeat(COLS));
+        println!("    ┌{}┐", "─".repeat(W));
+        for r in &rows {
+            println!("    │{r}│");
+        }
+        println!("    └{}┘", "─".repeat(W));
     }
 
     /// Paint the generator's current display: a pending dial in progress, an

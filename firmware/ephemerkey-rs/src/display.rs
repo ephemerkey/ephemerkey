@@ -9,11 +9,11 @@
 use embassy_stm32::i2c::mode::Master;
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::mode::Blocking;
-use embedded_graphics::mono_font::{ascii::FONT_5X8, MonoTextStyle};
+use embedded_graphics::mono_font::{ascii::FONT_10X20, ascii::FONT_6X10, MonoTextStyle};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::{Baseline, Text};
-use ephemerkey_ui::{Screen, COLS, ROWS};
+use ephemerkey_ui::{Align, Screen, Size, HEIGHT, WIDTH};
 use ssd1306::prelude::*;
 use ssd1306::{I2CDisplayInterface, Ssd1306};
 
@@ -25,7 +25,8 @@ type Display<'d> = Ssd1306<
 
 pub struct Oled<'d> {
     dp: Display<'d>,
-    style: MonoTextStyle<'static, BinaryColor>,
+    big: MonoTextStyle<'static, BinaryColor>,
+    small: MonoTextStyle<'static, BinaryColor>,
 }
 
 impl<'d> Oled<'d> {
@@ -35,31 +36,32 @@ impl<'d> Oled<'d> {
         let mut dp = Ssd1306::new(iface, DisplaySize128x32, DisplayRotation::Rotate0)
             .into_buffered_graphics_mode();
         dp.init().ok()?;
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        Some(Self { dp, style })
+        Some(Self {
+            dp,
+            big: MonoTextStyle::new(&FONT_10X20, BinaryColor::On),
+            small: MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+        })
     }
 
-    /// Blit a rendered [`Screen`] to the panel. Cells are drawn on a 6-px pitch
-    /// (row height 8), so the 21×4 grid maps to the full 128×32 face.
+    /// Blit a rendered [`Screen`]: stack its sized lines, vertically centered,
+    /// each aligned horizontally — the code big, hints small.
     pub fn show(&mut self, screen: &Screen) {
         let _ = self.dp.clear(BinaryColor::Off);
-        for r in 0..ROWS {
-            for c in 0..COLS {
-                let ch = screen.cells[r][c];
-                if ch == b' ' {
-                    continue;
-                }
-                let s = [ch];
-                if let Ok(g) = core::str::from_utf8(&s) {
-                    let _ = Text::with_baseline(
-                        g,
-                        Point::new((c * 6) as i32, (r * 8) as i32),
-                        self.style,
-                        Baseline::Top,
-                    )
-                    .draw(&mut self.dp);
-                }
-            }
+        let mut y = ((HEIGHT as i32 - screen.total_height() as i32) / 2).max(0);
+        for line in screen.lines() {
+            let w = line.pixel_width() as i32;
+            let x = match line.align() {
+                Align::Left => 0,
+                Align::Center => ((WIDTH as i32 - w) / 2).max(0),
+                Align::Right => (WIDTH as i32 - w).max(0),
+            };
+            let style = match line.size() {
+                Size::Big => self.big,
+                Size::Small => self.small,
+            };
+            let _ = Text::with_baseline(line.text(), Point::new(x, y), style, Baseline::Top)
+                .draw(&mut self.dp);
+            y += line.size().height() as i32;
         }
         let _ = self.dp.flush();
     }
