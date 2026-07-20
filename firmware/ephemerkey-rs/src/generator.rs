@@ -36,7 +36,7 @@ use ephemerkey_ui::{render, Screen, View};
 /// The OLED handle the task carries: the real display when built with `display`,
 /// or nothing (unit) otherwise — so the task signature is stable across builds.
 #[cfg(oled)]
-type OledArg = Option<crate::display::Oled<'static>>;
+type OledArg = Option<crate::display::Oled>;
 #[cfg(not(oled))]
 type OledArg = ();
 
@@ -48,10 +48,9 @@ const DOUBLE_MS: u64 = 300;
 /// Longest ritual code the dial accepts (schema allows 4–10 digits).
 const MAX_DIAL: usize = 10;
 
-/// The gate environment the ritual engine evaluates dialed codes against. The
-/// generator has its own GNSS fence (via [`gate`]) and calendar table; the
-/// stillness gate needs an accelerometer not wired to this task yet, so it
-/// reads "still" (documented non-enforcement, matching the lock console).
+/// The gate environment the ritual engine evaluates dialed codes against: the
+/// generator's own GNSS fence ([`gate`]), the stillness latch the accel sampler
+/// publishes ([`crate::motion`], shared I2C1 bus), and the calendar table.
 struct GenSensors {
     calendars: Calendars,
     now: u64,
@@ -61,7 +60,7 @@ impl Sensors for GenSensors {
         gate::in_fence()
     }
     fn still_for_s(&self) -> u32 {
-        u32::MAX
+        crate::motion::still_for_s()
     }
     fn calendar_open(&self, window: u8) -> bool {
         self.calendars.open(window, self.now)

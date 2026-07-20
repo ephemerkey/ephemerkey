@@ -6,9 +6,6 @@
 //! paints. The OLED is optional: [`Oled::new`] returns `None` if the panel
 //! doesn't ACK, so a generator with no display attached still runs (logging).
 
-use embassy_stm32::i2c::mode::Master;
-use embassy_stm32::i2c::I2c;
-use embassy_stm32::mode::Blocking;
 use embedded_graphics::mono_font::{ascii::FONT_10X20, ascii::FONT_6X10, MonoTextStyle};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -17,22 +14,22 @@ use ephemerkey_ui::{Align, Screen, Size, HEIGHT, WIDTH};
 use ssd1306::prelude::*;
 use ssd1306::{I2CDisplayInterface, Ssd1306};
 
-type Display<'d> = Ssd1306<
-    I2CInterface<I2c<'d, Blocking, Master>>,
+type Display = Ssd1306<
+    I2CInterface<crate::I2c1Dev>,
     DisplaySize128x32,
     ssd1306::mode::BufferedGraphicsMode<DisplaySize128x32>,
 >;
 
-pub struct Oled<'d> {
-    dp: Display<'d>,
+pub struct Oled {
+    dp: Display,
     big: MonoTextStyle<'static, BinaryColor>,
     small: MonoTextStyle<'static, BinaryColor>,
 }
 
-impl<'d> Oled<'d> {
+impl Oled {
     /// Bring up the panel. `None` if it doesn't initialize (not populated).
-    pub fn new(i2c: I2c<'d, Blocking, Master>) -> Option<Self> {
-        let iface = I2CDisplayInterface::new(i2c);
+    pub fn new(dev: crate::I2c1Dev) -> Option<Self> {
+        let iface = I2CDisplayInterface::new(dev);
         let mut dp = Ssd1306::new(iface, DisplaySize128x32, DisplayRotation::Rotate0)
             .into_buffered_graphics_mode();
         dp.init().ok()?;

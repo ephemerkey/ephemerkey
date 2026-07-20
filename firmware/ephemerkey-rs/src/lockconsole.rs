@@ -25,9 +25,9 @@ use crate::usbcdc::{cdc, CdcBuffers, PACKET};
 use crate::Irqs;
 
 /// The gate environment the lock evaluates codes against. The calendar gate is
-/// RTC-driven from the sealed config's windows; the lock's own geofence and the
-/// stillness gate need sensors that aren't wired to this bench build yet, so
-/// they read "open" (documented non-enforcement, unchanged from before).
+/// RTC-driven from the sealed config's windows; the stillness gate reads the
+/// shared accel sampler ([`crate::motion`]). The lock's own geofence still needs
+/// its GNSS wired, so it reads "open" (documented non-enforcement).
 struct LockEnv {
     calendars: Calendars,
     now: u64,
@@ -38,7 +38,7 @@ impl Sensors for LockEnv {
         true // lock's own GNSS fence not wired on the bench
     }
     fn still_for_s(&self) -> u32 {
-        u32::MAX // accelerometer not wired
+        crate::motion::still_for_s() // shared accel sampler (I2C1)
     }
     fn calendar_open(&self, window: u8) -> bool {
         self.calendars.open(window, self.now)

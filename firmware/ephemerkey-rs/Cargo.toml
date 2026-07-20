@@ -27,8 +27,16 @@ embassy-executor = { version = "0.10", features = [
     "defmt",
 ] }
 embassy-time = { version = "0.5", features = ["defmt", "tick-hz-32_768"] }
-embassy-sync = { version = "0.7", features = ["defmt"] }
+embassy-sync = { version = "0.8", features = ["defmt"] }
 embassy-futures = "0.1"
+# Shared blocking I2C1 bus: the generator drives the OLED and the accel on it.
+embassy-embedded-hal = "0.6"
+static_cell = "2"
+# embedded-hal I2C trait for the shared-bus device (accel reads).
+embedded-hal = "1.0"
+# thumbv6m has no native atomic CAS; route static_cell's portable-atomic through
+# the cortex-m critical-section (already provided by critical-section-single-core).
+portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
 
 cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7"

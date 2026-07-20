@@ -60,12 +60,33 @@ mod generator;
 mod gnss;
 #[cfg(feature = "lock")]
 mod lock;
+#[cfg(any(feature = "gnss", feature = "lock", feature = "sensors"))]
+mod motion;
 #[cfg(all(feature = "lock", feature = "usb-provision"))]
 mod lockconsole;
 #[cfg(feature = "sensors")]
 mod sensors;
 #[cfg(feature = "wifi")]
 mod wifi;
+
+// Shared blocking I2C1 bus (PB6/PB7): the generator's OLED and the accel
+// sampler each hold an `I2c1Dev` handle to it. Single-executor, cooperative —
+// a blocking transaction never awaits — so a `NoopRawMutex` is sound and, unlike
+// a critical-section mutex, doesn't disable interrupts across the (multi-ms)
+// OLED flush.
+#[cfg(feature = "sensors")]
+use embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice;
+#[cfg(feature = "sensors")]
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
+#[cfg(feature = "sensors")]
+use static_cell::StaticCell;
+#[cfg(feature = "sensors")]
+type I2c1Raw =
+    embassy_stm32::i2c::I2c<'static, embassy_stm32::mode::Blocking, embassy_stm32::i2c::mode::Master>;
+#[cfg(feature = "sensors")]
+pub type I2c1Bus = BlockingMutex<NoopRawMutex, core::cell::RefCell<I2c1Raw>>;
+#[cfg(feature = "sensors")]
+pub type I2c1Dev = I2cDevice<'static, NoopRawMutex, I2c1Raw>;
 
 bind_interrupts!(pub struct Irqs {
     RNG_CRYP => rng::InterruptHandler<peripherals::RNG>;
@@ -161,9 +182,20 @@ async fn main(spawner: Spawner) {
     let _ = (journal, identity);
 
     // Subsystems common to both personalities (product board only). The I2C1
-    // sensor bus is NOT here: it is claimed per role — the generator drives the
-    // OLED on it, the lock controller the accelerometer. (A shared-bus split so
-    // the generator also gets the accel is a later step.)
+    // sensor bus is mounted once here and SHARED: the accel sampler runs for
+    // both roles (publishing stillness to `motion`), and the generator also puts
+    // its OLED on the same bus (below).
+    #[cfg(feature = "sensors")]
+    let i2c1_bus: &'static I2c1Bus = {
+        let mut ic = embassy_stm32::i2c::Config::default();
+        ic.frequency = embassy_stm32::time::Hertz::khz(400);
+        let i2c = embassy_stm32::i2c::I2c::new_blocking(p.I2C1, p.PB6, p.PB7, ic);
+        static BUS: StaticCell<I2c1Bus> = StaticCell::new();
+        BUS.init(BlockingMutex::new(core::cell::RefCell::new(i2c)))
+    };
+    #[cfg(feature = "sensors")]
+    spawner
+        .spawn(sensors::task(I2cDevice::new(i2c1_bus), p.PB3, p.PA8, p.EXTI3, p.EXTI8).unwrap());
     #[cfg(feature = "wifi")]
     spawner.spawn(wifi::task(p.LPUART1, p.PA2, p.PA3, p.PB5).unwrap());
     #[cfg(feature = "buzzer")]
@@ -191,14 +223,10 @@ async fn main(spawner: Spawner) {
                 center: Input::new(p.PA15, Pull::Up),
                 right: Input::new(p.PF3, Pull::Down),
             };
-            // The dial/reveal OLED on the I2C1 sensor bus (0x3C). `None` if the
+            // The dial/reveal OLED shares the I2C1 bus (0x3C). `None` if the
             // panel isn't populated — the generator still runs, logging.
             #[cfg(oled)]
-            let oled = {
-                let mut ic = embassy_stm32::i2c::Config::default();
-                ic.frequency = embassy_stm32::time::Hertz::khz(400);
-                display::Oled::new(embassy_stm32::i2c::I2c::new_blocking(p.I2C1, p.PB6, p.PB7, ic))
-            };
+            let oled = display::Oled::new(I2cDevice::new(i2c1_bus));
             #[cfg(not(oled))]
             let oled = ();
             spawner.spawn(
@@ -209,12 +237,8 @@ async fn main(spawner: Spawner) {
         #[cfg(feature = "lock")]
         config::Role::LockController => {
             // The actuator bus (stub) + the validation engine, fed codes over
-            // the USB console (stand-in for the LOCK I2C code path). The lock
-            // claims the I2C1 sensor bus for the accelerometer (tamper / own-
-            // fence stillness).
-            #[cfg(feature = "sensors")]
-            spawner
-                .spawn(sensors::task(p.I2C1, p.PB6, p.PB7, p.PB3, p.PA8, p.EXTI3, p.EXTI8).unwrap());
+            // the USB console (stand-in for the LOCK I2C code path). The accel
+            // (stillness / tamper) runs commonly for both roles, above.
             spawner.spawn(lock::task(p.I2C3, p.PA7, p.PA6).unwrap());
             #[cfg(feature = "usb-provision")]
             {
