@@ -302,10 +302,12 @@ reveals. The dial / reveal UI is a shared render model (`ephemerkey-ui`): a
 `View` → a 21×4 character `Screen` the firmware blits to the 128×32 SSD1306 OLED
 (`display.rs`, ssd1306 + embedded-graphics) and the emulator paints to the
 terminal, so the sim shows what the device draws. The bench `hw-aes` build omits
-the panel for SRAM headroom (the `oled` cfg). Remaining: the generator's own
-stillness sensor, and the I2C1 shared-bus split so the generator gets the accel
-alongside the OLED (today the generator claims the bus for the display, the lock
-for the accel).
+the panel for SRAM headroom (the `oled` cfg). I2C1 is a shared blocking bus
+(`embassy-embedded-hal`), so the generator drives both the OLED and the LIS3DH:
+`sensors::task` samples the accel and publishes a stillness duration to the
+`motion` latch, which the generator ritual's and the lock's stillness gates now
+read (the accel threshold is bench-tunable). Remaining hardware bring-up: the
+lock's own GNSS fence, and tuning the stillness threshold on real hardware.
 
 ## More pedantic sequences (catalog)
 
