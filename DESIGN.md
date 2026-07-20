@@ -84,9 +84,12 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
 - 0.4A capability comfortably covers the GNSS acquisition peak (~30mA) and USB.
   (The optional WiFi module is expressly **not** on this rail — its 350mA TX
   bursts get a dedicated LDO from VSYS; see the WiFi section.)
-- CFG1/2/3 set the output-voltage presets and operating mode per datasheet;
-  SEL chooses between the two presets at runtime (e.g. a lower sleep rail);
-  EN gated by the MCU or tied on.
+- CFG1/2/3 are read once at startup by the resistor-to-digital interface
+  (each pin → 1% resistor → GND, then the pins are disabled): R27 CFG1 =
+  36.5kΩ (V_O(2) = 3.3V), R28 CFG2 = 0Ω (input current limit = Unlimited),
+  R29 CFG3 = 16.2kΩ (V_O(1) = 3.3V). SEL is strapped to GND — no spare GPIO
+  for runtime DVS, and both presets read 3.3V anyway so a SEL fault is
+  harmless. EN tied to VIN (always on).
 
 ### Accelerometer: LIS3DHTR (LGA-16)
 
@@ -94,8 +97,16 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
   OLED (0x3C) and the audit-log EEPROM (0x50–0x53); GNSS is on UART.
 - **Wake-on-motion** (INT1) lets the MCU sleep in Stop mode and only run the
   GNSS/TOTP pipeline when the device is handled.
-- **Tamper detection** (INT2 / free-fall / orientation) — optional policy to
-  zeroize the TOTP secret in flash if the enclosure is disturbed while armed.
+- **Tamper detection** (free-fall / orientation, OR'd onto the INT1 pin) —
+  optional policy to zeroize the TOTP secret in flash if the enclosure is
+  disturbed while armed.
+- **Peripheral power gate** (`PERI_EN`, freed from the 2nd accel-interrupt
+  pin): a high-side load switch (Sensors Q3 AO3401A / Q4 AO3400A, R30/R31,
+  C31) powers **+3V3_SW** for the OLED, the audit EEPROM, and the I2C1
+  pull-ups (R9/R10) — all gated off in Stop so they can't leak. The LIS3DH
+  stays on always-on +3V3 (it's the wake source); FW drives SCL/SDA low
+  before Stop so the powered accel never floats on the unpulled bus. The lock
+  link (PB0/PB1, R11/R12) is a **separate** bus and stays always-on.
 
 ### WiFi (optional): ESP32-C3-MINI-1 + AP2112K-3.3
 
@@ -129,9 +140,11 @@ references it.
   battery below ~3.5V the LDO drops out toward the C3's 3.0V floor — gate WiFi
   on power state. Keep WiFi TX and GNSS acquisition time-separated (RF hygiene);
   place the module's PCB antenna at a board edge with the Espressif keep-out.
-- **Displaced pins:** ACC INT1 PA2→PB3 (EXTI3), ACC INT2 PA3→PA8 (EXTI8 —
-  retires the optional GNSS_EN earmark). PB5 is the one spare that cannot take
-  an accel INT (PA5/BTN1 owns EXTI line 5), so it carries the WIFI_PWR output.
+- **Displaced pins:** ACC INT1 PA2→PB3 (EXTI3), which now also carries tamper
+  (2nd interrupt generator OR'd onto INT1 via CTRL_REG3 I1_IA2). The 2nd accel
+  interrupt *pin* is dropped, freeing PA8 → **PERI_EN** (peripheral power-gate
+  → Sensors Q3). PB5 carries WIFI_PWR (PA5/BTN1 owns EXTI line 5, so PB5 can't
+  take an INT).
   **No spare GPIO remains** on the 32-pin package.
 
 ## Geofence + TOTP Logic
@@ -201,8 +214,11 @@ outputs a steady 3.3V either way.
 
 - L: 2.2µH shielded (per datasheet typical), DCR-low for efficiency.
 - Cin: 10µF X7R; Cout: 2×10µF X7R (low ESR for ripple at the GNSS RF supply).
-- Output: 3.3V via CFG pins; SEL for second preset (sleep rail) if used.
-- EN: MCU-controllable or tied to VIN through a pull-up (always on).
+- Output: 3.3V via CFG straps — R27 36.5k (CFG1, V_O(2)=3.3V), R28 0R (CFG2,
+  I_lim Unlimited; needs L Isat ≥ 2A — FNR3015S2R2MT is 2A), R29 16.2k (CFG3,
+  V_O(1)=3.3V); SEL = GND (V_O(1) active). Read once at EN rising — power-cycle
+  to change. 1%/≤200ppm parts, short CFG traces (<10pF), no probes/caps on CFG.
+- EN: tied to VIN (always on).
 - Thermal pad to ground pour.
 
 ### USB-C input + Li-ion charging
@@ -273,7 +289,7 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 15 | PB1 | LOCK_SCL | I2C SCL → lock (authenticated link; ephemerkey = master) |
 | 16 | VSS_1 | GND | |
 | 17 | VDDUSB | 3V3 USB | 100nF (USB transceiver supply) |
-| 18 | PA8 | LIS3DH INT2 | EXTI tamper / free-fall (EXTI8) |
+| 18 | PA8 | PERI_EN | peripheral power-gate → Sensors Q3 (+3V3_SW); active-high, R31 pulldown = off at reset |
 | 19 | PA9 | USART1_TX | → GNSS RXD (NMEA/UBX) |
 | 20 | PA10 | USART1_RX | ← GNSS TXD (NMEA/UBX) |
 | 21 | PA11 | USB_DM | USB FS (provisioning/console) |
@@ -392,8 +408,9 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
 - **Secret at rest:** TOTP shared secret stored in MCU flash; enable RDP
   (level 1 minimum) in production. Optionally wrap with the U0 AES engine using
   a key derived from a device-unique value.
-- **Tamper:** LIS3DH INT2 (free-fall/motion-while-armed) can trigger secret
-  zeroization. Policy is firmware-configurable.
+- **Tamper:** LIS3DH free-fall/motion-while-armed (2nd interrupt generator
+  OR'd onto the INT1 pin) can trigger secret zeroization. Policy is
+  firmware-configurable.
 - **Anti-replay on clock:** reject code generation if the RTC has not been
   disciplined by GNSS within a configurable staleness window — a frozen or
   rolled-back clock must not yield valid codes.
@@ -415,7 +432,7 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
   P-FET — all house parts (see § USB-C input + Li-ion charging).
 - **GNSS power:** keep V_BCKP alive (~15µA) for hot starts (~1–2s vs ~25s cold);
   MCU may still gate VCC via PA8.
-- **Accel:** LIS3DHTR on I2C1, INT1 wake / INT2 tamper.
+- **Accel:** LIS3DHTR on I2C1, INT1 = wake + tamper (INT2 generator OR'd onto the INT1 pin; 2nd pin freed → PERI_EN).
 - **Time base:** STM32 RTC w/ LSE crystal, GNSS-disciplined.
 - **Code output / lock link:** authenticated I2C (ephemerkey = master) on J2, which
   also carries VSYS to power the companion lock. See § Code Output Interface.
@@ -429,8 +446,10 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
    (energy math strongly favors it); optionally also gate VCC via PA8/GNSS_EN.
 3. **W3011A placement/keep-out:** confirm ground clearance and match topology
    against the antenna datasheet; reserve a board corner.
-4. **TPS63900 CFG/SEL strapping:** finalize the resistor/strap values for 3.3V
-   primary + (optional) lower sleep rail, and whether SEL is MCU-driven.
+4. ~~**TPS63900 CFG/SEL strapping**~~ **RESOLVED:** SEL = GND (no spare GPIO
+   for DVS); R27 CFG1 = 36.5k → V_O(2) 3.3V, R28 CFG2 = 0R → I_lim Unlimited,
+   R29 CFG3 = 16.2k → V_O(1) 3.3V (the active preset). Both presets 3.3V, so
+   no sleep rail — the TPS63900's 75nA Iq doesn't need one.
 5. ~~**USB-C role**~~ **RESOLVED:** USB-C powers + charges + provisions
    (GCT USB4105, MCP73831 charger, AO3401A load-share). Remaining: USB-C SHIELD
    tie (direct vs 1MΩ∥cap).
@@ -523,7 +542,7 @@ Notes:
 | Inductor | 2.2µH shielded | 2520/2016 | 1 | TPS63900 buck-boost |
 | Input cap | 10µF 16V X7R | 0805 | 1 | TPS63900 VIN |
 | Output cap | 10µF 16V X7R | 0805 | 2 | TPS63900 VOUT |
-| EN/CFG straps | 10k–1M | 0402 | ~4 | TPS63900 CFG1/2/3, SEL, EN |
+| CFG straps | 36.5k / 0R / 16.2k 1% | 0402 | 3 | TPS63900 CFG1/2/3 → GND (R27/R28/R29); EN → VIN, SEL → GND (no resistor) |
 | Bulk | 4.7µF 16V X7R | 0805 | 1 | 3V3 rail bulk |
 | Decoupling | 100nF 16V X7R | 0402 | ~10 | per-IC supply decoupling |
 

@@ -37,3 +37,6 @@ __pycache__/
 
 # kicad-happy analysis cache (regenerable)
 hardware/*/analysis/
+
+# VS Code Local History
+.history/

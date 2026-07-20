@@ -205,7 +205,7 @@ MCU["note"] = (12, 140, """MCU — ATtiny1616 (QFN-20) controller.  Pinout / net
   8 PA7          HALL_DOOR  <- J6.3                11 PB3      HALL_BOLT  <- J7.3
                  PB4  SERVO_SIG2 -> DRV R24            spare:  PB5, PC0, PC1, PC2, PC3
 PASSIVES:  C1 100nF VCC--GND    C2 1uF VCC--GND    D1 LED + R1 1k:  PC3 -- D1 -- R1 -- GND
-J2 I2C   (S4B-PH-K 4-pin):  1 = GND   2 = VCC (No-Connect)   3 = SDA (PB1)   4 = SCL (PB0)
+J2 I2C   (S4B-PH-K 4-pin):  1 = GND   2 = VCC <- ephemerkey VSYS (power in)   3 = SDA (PB1)   4 = SCL (PB0)
 J4 UPDI  (1x3 header):      1 = UPDI (PA0)   2 = VCC (BAT)   3 = GND
 J6 HALL DOOR (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PA7 ;  R22 10k OUT--HALL_PWR ;  C9  100nF OUT--GND
 J7 HALL BOLT (S3B 3-pin):   1 = HALL_PWR   2 = GND   3 = OUT -> PB3 ;  R23 10k OUT--HALL_PWR ;  C10 100nF OUT--GND""")

@@ -64,8 +64,10 @@ BUZZER = "Buzzer_Beeper:MagneticBuzzer_CUI_CMT-8504-100-SMT"
 USBC_VERT = "ephemerkey:USB_C_Receptacle_G-Switch_GT-USB-7051x"  # vertical SMT, 16-pin USB2.0
 
 # JLCPCB LCSC for the common 0402 Basic passives
+# (16.2k / 36.5k are E96 1% Uni-Royal 0402WGF — TPS63900 R2D config straps)
 RLCSC = {"5.1k": "C25905", "4.7k": "C25900", "10k": "C25744",
-         "100k": "C25741", "1k": "C11702", "0R": "C17168", "100R": "C106232"}
+         "100k": "C25741", "1k": "C11702", "0R": "C17168", "100R": "C106232",
+         "16.2k": "C27176", "36.5k": "C25887"}
 CLCSC = {"100nF": "C1525", "1uF": "C29266", "12pF": "C1547", "10uF": "C15850",
          "1.8pF": "C1549"}
 
@@ -170,6 +172,11 @@ PSU = dict(name="PSU", file="psu.kicad_sch",
              lcsc="C130719", mpn="NCD0402R1"),
         R("R8", "1k"),
         R("R15", "5.1k"), R("R16", "5.1k"),   # J5 (2nd USB-C) CC1/CC2 pulldowns (sink)
+        # TPS63900 R2D config straps (each CFG pin -> R -> GND, read once at
+        # EN rising edge; 1% E96, keep traces short — <10pF on the pin):
+        R("R27", "36.5k"),                    # CFG1: VO(2) = 3.3V  (SEL=high preset)
+        R("R28", "0R"),                       # CFG2: input current limit = Unlimited
+        R("R29", "16.2k"),                    # CFG3: VO(1) = 3.3V  (SEL=low = ACTIVE)
     ])
 
 # ============================ GNSS sheet =====================================
@@ -204,7 +211,16 @@ SENSORS = dict(name="Sensors", file="sensors.kicad_sch",
              fp="Package_LGA:LGA-16_3x3mm_P0.5mm", lcsc="C15134",
              mpn="LIS3DHTR", mfr="STMicroelectronics"),
         C("C23", "100nF"), C("C24", "100nF"),             # VDD / VDD_IO
-        R("R9", "4.7k"), R("R10", "4.7k"),                # I2C1 pull-ups
+        R("R9", "4.7k"), R("R10", "4.7k"),                # I2C1 pull-ups (now to +3V3_SW)
+        # +3V3_SW peripheral load switch (PERI_EN, active-high): gates DS1 OLED,
+        # U7 EEPROM, and R9/R10 so they do not leak in Stop.  U5 stays on +3V3.
+        dict(ref="Q3", lib_id="Transistor_FET:Q_PMOS_GSD", value="AO3401A",
+             fp=SOT23, lcsc="C15127", mpn="AO3401A", mfr="AOS"),   # hi-side pass FET
+        dict(ref="Q4", lib_id="Transistor_FET:Q_NMOS_GSD", value="AO3400A",
+             fp=SOT23, lcsc="C20917", mpn="AO3400A", mfr="AOS"),   # gate driver
+        R("R30", "100k"),                                 # Q3 gate pull-up (off at reset)
+        R("R31", "100k"),                                 # PERI_EN pulldown (off at reset)
+        C("C31", "1uF"),                                  # +3V3_SW reservoir
     ])
 
 # ============================ WiFi sheet (optional) ==========================
@@ -252,7 +268,7 @@ STORAGE = dict(name="Storage", file="storage.kicad_sch",
 MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6, UFQFPN-32).  PLACED, not wired.
  pin  name            net / function           pin  name            net / function
   1   VDD             +3V3  (C3 100nF)           17  VDDUSB          +3V3  (C5 100nF)
-  2   PC14/OSC32_IN   Y1 LSE 32.768kHz           18  PA8             ACC_INT2 (EXTI tamper)
+  2   PC14/OSC32_IN   Y1 LSE 32.768kHz           18  PA8             PERI_EN (periph pwr gate, act-hi)
   3   PC15/OSC32_OUT  Y1 LSE 32.768kHz           19  PA9             USART1_TX -> GNSS RXD
   4   PF2/NRST        NRST (C9 100nF, J1)        20  PA10            USART1_RX <- GNSS TXD
   5   VDDA/VREF+      +3V3 (C7 1uF, C8 100nF)    21  PA11            USB_DM   (<- U3 ESD)
@@ -284,7 +300,7 @@ J2 LOCK IF (RA JST-PH 4-pin, S4B-PH-K; AUTHENTICATED I2C; ephemerkey = MASTER, l
       Wake-on-I2C (no discrete line): lock wakes on SCL START; master sends a dummy/wake xfer then retries.
       I2C pull-ups R11/R12 4.7k -> +3V3 (KEEP at 3V3: STM32 PB0/PB1 are not >3.6V tolerant -- do NOT pull to VSYS; the
       lock's I2C VIH ~0.7*VSYS is met by a 3V3 bus across the discharge curve).  AUTH = HMAC-SHA1 (reuse smalltotp).
-DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3  3 = SCL (PB6)  4 = SDA (PB7).
+DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3_SW (GATED, Sensors Q3)  3 = SCL (PB6)  4 = SDA (PB7).
       Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
 
 PSU["note"] = (12, 158, """POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.
@@ -305,8 +321,10 @@ J5   USB-C 16P VERT  --   VBUS    VBUS_5V  (|| J3, same bus)
                      --   CC1     R15 5.1k -> GND                    (SOD-123)      K      --        VSYS
                      --   CC2     R16 5.1k -> GND
                      --   D+/D-   same net as J3 (via U3)       U2   TPS63900       1      EN        VIN  (tied on)
-                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (preset 1)
-                                                                                    3/4/5  CFG1/2/3  strap = 3.3V out
+                                  USE ONE PORT AT A TIME             (WSON-10)      2      SEL       GND  (selects VO1)
+                                                                                    3      CFG1      R27 36.5k -> GND  VO2=3.3V
+                                                                                    4      CFG2      R28 0R    -> GND  Ilim=unl.
+                                                                                    5      CFG3      R29 16.2k -> GND  VO1=3.3V
 U3   USBLC6-2SC6     1    I/O1    D+ (connector)                                    6      VOUT      +3V3  (C13, C14 10uF)
      (SOT-23-6)      2    GND     GND                                               7      LX2       L1 2.2uH
                      3    I/O2    D- (connector)                                    9      LX1       L1 2.2uH
@@ -323,7 +341,12 @@ LOAD-SHARE:  VSYS = VBUS_5V - D3  (USB in: Q1 OFF, U4 charges the cell)   |   BA
   dumping uncontrolled charge current into the cell and bypassing U4.
   The lock's Q3 is a HIGH-SIDE switch and uses the OPPOSITE S/D assignment on purpose -- do not copy it here.
 
-BULK:  C15 = VBUS_5V.   C16 = BAT+.""")
+BULK:  C15 = VBUS_5V.   C16 = BAT+.
+
+CFG (TPS63900 R2D):  resistors read ONCE at startup (EN rising), then the pins are disabled -- power-cycle to change.
+  SEL=GND makes VO(1)/R29 the live setting; R27 = 36.5k so a SEL=high fault still gives 3.3V.  R28 = 0R -> input
+  current limit 'Unlimited' (needs L1 Isat >= 2A: FNR3015S2R2MT is 2A -- OK).  Use 1%, <=200ppm parts (TI: total
+  RMS error < 3%); keep CFG traces short, < 10pF pin capacitance, no test points / caps on CFG nets.""")
 
 GNSS["note"] = (12, 150, """GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.
 MD1 MAX-M10S (18-pin LCC):
@@ -343,16 +366,19 @@ ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 =
 
 SENSORS["note"] = (12, 70, """Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.
 U5 LIS3DH:
-  1  VDD_IO   +3V3 (C24 100nF)        9  INT2     -> PA8 (tamper / free-fall)
+  1  VDD_IO   +3V3 (C24 100nF)        9  INT2     NC  (2nd alarm removed)
   2  NC                              10  RES      -> GND
-  3  NC                              11  INT1     -> PB3 (wake-on-motion)
+  3  NC                              11  INT1     -> PB3 (wake + tamper, OR via CTRL_REG3 I1_IA2)
   4  SCL      -> PB6 (I2C1)          12  GND      GND
   5  GND      GND                    13  ADC3     NC
   6  SDA      -> PB7 (I2C1)          14  VDD      +3V3 (C23 100nF)
   7  SDO/SA0  addr 0x18(GND)/0x19    15  ADC2     NC
   8  CS       +3V3 (force I2C)       16  ADC1     NC
-I2C1:  R9/R10 4.7k pull-ups to +3V3 — serve U5 + DS1 (OLED, MCU sheet) + U7 (EEPROM, Storage sheet).
-Tamper (INT2) may zeroize the TOTP secret (DESIGN.md Security).""")
+I2C1:  R9/R10 4.7k pull-ups to +3V3_SW (GATED) — serve U5 + DS1 (OLED, MCU sheet) + U7 (EEPROM, Storage sheet).
++3V3_SW load switch = Q3 AO3401A hi-side + Q4 AO3400A gate-drv + R30 gate-PU + R31 PERI_EN-PD + C31 1uF.
+  Gates DS1 + U7 + R9/R10 so nothing leaks in Stop.  U5 stays on always-on +3V3 (wake source); FW drives
+  PB6/PB7 LOW before Stop so the powered LIS3DH never sees the unpulled bus.  PERI_EN active-high from the
+  freed INT2 pin (PA8; PA3 on the no-WiFi build).  Tamper now on INT1 (I1_IA2); may zeroize TOTP (DESIGN.md).""")
 
 WIFI["note"] = (12, 130, """WiFi (OPTIONAL) — MD2 ESP32-C3-MINI-1 + U6 AP2112K-3.3.  PLACED, not wired.  Depopulate this sheet to omit WiFi.
 POWER:  WIFI_3V3 comes from VSYS via U6 — NOT from +3V3.  TX bursts (350mA @ +21dBm, 802.11b) must never load the
@@ -368,7 +394,7 @@ MD2 ESP32-C3-MINI-1-N4 (used pins; all others NC):
   18  IO4    R24 0R DNP -> BOOT0 (MCU recovery)       31  IO21  U0TXD -> R23 1k -> WIFI_RXD (PA3 = LPUART1_RX)
   19  IO5    R25 0R DNP -> NRST  (MCU recovery)       GND = 1,2,11,14,36-53 + pour.  PCB antenna end at board edge,
                                                       ground keep-out under the antenna zone per Espressif DS 8.2.
-MCU SIDE — 3 GPIOs total.  Pin moves on the MCU sheet: ACC_INT1 PA2 -> PB3, ACC_INT2 PA3 -> PA8 (GNSS_EN earmark retired):
+MCU SIDE — 3 GPIOs total.  Pin moves: ACC_INT1 PA2 -> PB3 (also carries tamper, OR via I1_IA2); INT2 pin removed -> PA8 = PERI_EN (periph pwr gate).  WiFi GPIOs:
   PA2 = WIFI_TXD (LPUART1_TX / USART2_TX)   PA3 = WIFI_RXD (LPUART1_RX: wake-from-Stop on RX)   PB5 = WIFI_PWR (U6 EN)
 DOWNLOAD (flash MD2 through the MCU; FW exposes a USB-CDC bridge emulating DTR/RTS -> stock esptool.py just works):
   1. PB5 low >= 50ms (rail off + 60R discharge)      2. PA2 = GPIO, drive low (holds IO9 low via R21)
@@ -386,7 +412,7 @@ U7 M24M02E-F (UFDFPN8):
   2  NC                                              R9/R10 4.7k pull-ups live on the Sensors sheet)
   3  NC                                    6  SCL   <- PB6 (I2C1)
   4  VSS  GND                              7  /WC   GND (writes enabled; FW uses the SWP register instead)
-  9  EP   GND (datasheet: VSS or float)    8  VCC   +3V3 (C30 100nF close)
+  9  EP   GND (datasheet: VSS or float)    8  VCC   +3V3_SW (GATED — Sensors Q3; C30 100nF close)
 I2C ADDR:  1010 C2 A17 A16 -> 0x50-0x53 (C2=0 default; CDA register can move/lock it).  ID page via 1011 -> 0x58+.
   No conflicts w/ LIS3DH 0x18/0x19 + OLED 0x3C.  Bus is good to 1MHz (bus runs at 400kHz for the other targets).
 CONTENT (DESIGN.md "Storage, Logging & OTA"):  append-only audit ring — 32B records (seq, RTC ts, event type,

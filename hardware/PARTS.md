@@ -21,7 +21,8 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | U3 | USBLC6-2SC6 | USBLC6-2SC6 | C2687116 | Package_TO_SOT_SMD:SOT-23-6 |
 | U4 | MCP73831-2-OT | MCP73831T-2ACI/OT | C424093 | Package_TO_SOT_SMD:SOT-23-5 |
 | U5 | LIS3DHTR | LIS3DHTR | C15134 | Package_LGA:LGA-16_3x3mm_P0.5mm |
-| Q1 | AO3401A (P-FET) | AO3401A | C15127 | Package_TO_SOT_SMD:SOT-23 |
+| Q1, Q3 | AO3401A (P-FET) | AO3401A | C15127 | Package_TO_SOT_SMD:SOT-23 |
+| Q2, Q4 | AO3400A (N-FET) | AO3400A | C20917 | Package_TO_SOT_SMD:SOT-23 |
 | D3 | B5819W (Schottky) | B5819W | C8598 | Diode_SMD:D_SOD-123 |
 | MD2 | ESP32-C3-MINI-1 (WiFi, optional) | ESP32-C3-MINI-1-N4 | C2838502 | ephemerkey:ESP32-C3-MINI-1 (vendored from espressif/kicad-libraries, w/ 3D model) |
 | U6 | AP2112K-3.3 (WiFi LDO, optional) | AP2112K-3.3TRG1 | C51118 | Package_TO_SOT_SMD:SOT-23-5 |
@@ -54,14 +55,14 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 |-------|------|----------|
 | R 5.1k | C25905 | USB-C CC1/CC2 (R4,R5) |
 | R 4.7k | C25900 | Rprog (R6, 213 mA), I²C pull-ups (R9,R10) |
-| R 100k | C25741 | load-share gate pulldown (R7), WiFi LDO EN pulldown (R26) |
+| R 100k | C25741 | load-share gate pulldown (R7), WiFi LDO EN pulldown (R26), +3V3_SW switch (R30 Q3 gate PU, R31 PERI_EN PD) |
 | R 10k | C25744 | BOOT0 pulldown (R1), WiFi EN RC + straps (R18–R21) |
 | R 1k | C11702 | LED series (R2,R3,R8), WiFi UART series (R22,R23) |
 | R 0Ω | C17168 | antenna π-match series (Rm1), TPS63900 CFG2 = I_lim Unlimited (R28), WiFi→MCU recovery links (R24,R25 — DNP) |
 | R 36.5k 1% | C25887 | TPS63900 CFG1 = V_O(2) 3.3V (R27) |
 | R 16.2k 1% | C27176 | TPS63900 CFG3 = V_O(1) 3.3V, the active preset (R29) |
 | C 100nF | C1525 | decoupling (C3,C4,C5,C8,C9,C17,C20,C21,C22,C23,C24,C28,C30) |
-| C 1µF | C29266 | VDDA/VREF+ filter (C7), WiFi EN RC (C25) |
+| C 1µF | C29266 | VDDA/VREF+ filter (C7), WiFi EN RC (C25), +3V3_SW reservoir (C31) |
 | C 12pF | C1547 | LSE load caps (C1,C2) — tune to crystal CL |
 | C 10pF | (TBD) | VCC_RF HF bypass (C18) |
 | C 10µF 0805 | C15850 | bulk: 3V3, charger, buck-boost, VBUS/VBAT, GNSS VCC (C6,C10–C16,C19), WiFi LDO/module (C26,C27,C29) |
