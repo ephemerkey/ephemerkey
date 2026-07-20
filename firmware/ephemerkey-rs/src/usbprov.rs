@@ -6,19 +6,16 @@
 //! `/push` flow drives real hardware unchanged.
 
 use embassy_futures::join::join;
-use embassy_stm32::usb::{Driver, InterruptHandler};
-use embassy_stm32::{bind_interrupts, peripherals, Peri};
+use embassy_stm32::usb::Driver;
+use embassy_stm32::{peripherals, Peri};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
 use embassy_usb::{Builder, Config};
 use ephemerkey_frame::MAX_PAYLOAD;
 use ephemerkey_store::StoredIdentity;
 
-use crate::provision::{provisioner, DeviceJournal, FlashStore};
-
-bind_interrupts!(struct Irqs {
-    USB_DRD_FS => InterruptHandler<peripherals::USB>;
-});
+use crate::provision::{provisioner, DeviceJournal, DeviceProvisioner};
+use crate::Irqs;
 
 const PACKET: usize = 64;
 
@@ -29,6 +26,7 @@ pub async fn task(
     usb: Peri<'static, peripherals::USB>,
     dp: Peri<'static, peripherals::PA12>,
     dm: Peri<'static, peripherals::PA11>,
+    aes: Peri<'static, peripherals::AES>,
     journal: DeviceJournal,
     id: StoredIdentity,
 ) {
@@ -58,9 +56,9 @@ pub async fn task(
     let mut class = CdcAcmClass::new(&mut builder, &mut state, PACKET as u16);
     let mut device = builder.build();
 
-    // The engine is ~14 KiB — it lives here as a task local (in the executor's
-    // task arena), never on a call stack.
-    let mut prov = provisioner(id, journal);
+    // The engine (~14 KiB, or ~18 KiB with the hw-aes scratch) lives here as a
+    // task local — in the executor's task arena, never on a call stack.
+    let mut prov = provisioner(id, journal, aes);
 
     let usb_fut = device.run();
     let pump_fut = async {
@@ -79,7 +77,7 @@ pub async fn task(
 /// incremental, so feeding each packet as it arrives is correct.
 async fn pump<'d>(
     class: &mut CdcAcmClass<'d, Driver<'d, peripherals::USB>>,
-    prov: &mut ephemerkey_provision::Provisioner<FlashStore>,
+    prov: &mut DeviceProvisioner,
 ) -> Result<(), EndpointError> {
     let mut rx = [0u8; PACKET];
     loop {

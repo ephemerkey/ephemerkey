@@ -107,19 +107,34 @@ impl Store for FlashStore {
     }
 }
 
-/// Build the provisioning engine from a persisted identity and flash store.
-///
-/// Uses the software AES-GCM backend. The engine is generic over the backend
-/// (`Provisioner<S, A>`) so the STM32U0 AES engine could be dropped in here via
-/// `Provisioner::new_with_aes` — but embassy-stm32 0.6 has no driver for the
-/// U0's AES v2 peripheral (it only implements aes_v3b), so that awaits either
-/// newer embassy support or a hardware-verified raw-PAC backend.
-pub fn provisioner(id: StoredIdentity, journal: DeviceJournal) -> Provisioner<FlashStore> {
+/// The provisioning engine as built for this device: the raw-PAC hardware
+/// AES-GCM backend under `hw-aes` (UNVERIFIED — see `crate::pacaes`), software
+/// AES-GCM otherwise.
+#[cfg(feature = "hw-aes")]
+pub type DeviceProvisioner = Provisioner<FlashStore, crate::pacaes::PacAesGcm>;
+#[cfg(not(feature = "hw-aes"))]
+pub type DeviceProvisioner = Provisioner<FlashStore>;
+
+/// Build the provisioning engine from a persisted identity, flash store, and
+/// (under `hw-aes`) the hardware AES engine.
+pub fn provisioner(
+    id: StoredIdentity,
+    journal: DeviceJournal,
+    aes: embassy_stm32::Peri<'static, embassy_stm32::peripherals::AES>,
+) -> DeviceProvisioner {
     let identity = Identity {
         device_id: id.device_id,
         sign: SigningKey::from_bytes(&id.sign_seed),
         kx_priv: id.kx_priv,
         fw: concat!("ephemerkey-rs-", env!("CARGO_PKG_VERSION")),
     };
-    Provisioner::new(identity, FlashStore::new(journal))
+    #[cfg(feature = "hw-aes")]
+    let prov =
+        Provisioner::new_with_aes(identity, FlashStore::new(journal), crate::pacaes::PacAesGcm::new(aes));
+    #[cfg(not(feature = "hw-aes"))]
+    let prov = {
+        let _ = aes; // peripheral claimed but unused with software AES
+        Provisioner::new(identity, FlashStore::new(journal))
+    };
+    prov
 }

@@ -87,6 +87,11 @@ buzzer = []
 # Provisioning transport over USB FS CDC-ACM (button-gated).
 usb-provision = ["dep:embassy-usb"]
 
+# Open sealed configs on the STM32U0 hardware AES engine (raw-PAC aes_v2) rather
+# than software AES-GCM. OFF BY DEFAULT: the driver (src/pacaes.rs) is not yet
+# hardware-verified — enable only for bench bring-up. See pacaes.rs.
+hw-aes = ["embassy-stm32/unstable-pac"]
+
 [profile.release]
 debug = 2          # keep symbols for defmt/probe-rs; not flashed
 lto = "fat"

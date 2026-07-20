@@ -40,6 +40,8 @@ use ephemerkey_core as _;
 #[allow(dead_code)]
 mod clock;
 mod config;
+#[cfg(feature = "hw-aes")]
+mod pacaes;
 mod provision;
 #[cfg(feature = "usb-provision")]
 mod usbprov;
@@ -156,7 +158,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "usb-provision")]
     if provisioning {
         info!("entering USB provisioning mode");
-        spawner.spawn(usbprov::task(p.USB, p.PA12, p.PA11, journal, identity).unwrap());
+        spawner.spawn(usbprov::task(p.USB, p.PA12, p.PA11, p.AES, journal, identity).unwrap());
         // Solid LED = provisioning; park here (the USB task owns the work). This
         // branch diverges, so `status_led` is never needed by the heartbeat
         // below on this path.
