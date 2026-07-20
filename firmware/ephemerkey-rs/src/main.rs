@@ -35,11 +35,13 @@ use embassy_time::Timer;
 // exercised on-host by the emulator (../ephemerkey-emu) and tests.
 use ephemerkey_core as _;
 
-// `discipline_from_unix` / `is_fresh` are the clock API the GNSS pipeline will
-// call once NMEA UTC parsing lands; keep them even though unused today.
+// Some clock/gate API is only exercised on the generator (gnss) build; keep it
+// across configurations even when a given board doesn't call it.
 #[allow(dead_code)]
 mod clock;
 mod config;
+#[allow(dead_code)]
+mod gate;
 #[cfg(feature = "hw-aes")]
 mod pacaes;
 mod provision;
@@ -172,16 +174,22 @@ async fn main(spawner: Spawner) {
     // Normal run. The identity/journal aren't consumed by a running task in this
     // build path — drop them explicitly so there's no unused-binding noise.
     let _ = (journal, identity);
-    heartbeat(status_led).await;
+    status_indicator(status_led).await;
 }
 
-/// 1 Hz status-LED heartbeat — bring-up placeholder for the real
-/// in-fence / code-valid indication.
-async fn heartbeat(mut led: Output<'static>) -> ! {
+/// Status LED: solid while the device is ready to emit codes (valid fix + fresh
+/// clock, per `gate::may_emit`), otherwise a 1 Hz "searching" blink. On a board
+/// without GNSS the gate never opens, so it simply blinks.
+async fn status_indicator(mut led: Output<'static>) -> ! {
     loop {
-        led.set_high();
-        Timer::after_millis(50).await;
-        led.set_low();
-        Timer::after_millis(950).await;
+        if gate::may_emit() {
+            led.set_high();
+            Timer::after_millis(500).await;
+        } else {
+            led.set_high();
+            Timer::after_millis(50).await;
+            led.set_low();
+            Timer::after_millis(950).await;
+        }
     }
 }

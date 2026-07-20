@@ -20,7 +20,7 @@ use embassy_stm32::usart::{self, UartRx};
 use embassy_stm32::{bind_interrupts, dma, interrupt, Peri};
 use embassy_time::Timer;
 
-use crate::clock;
+use crate::{clock, gate};
 
 bind_interrupts!(struct Irqs {
     USART1 => usart::InterruptHandler<USART1>;
@@ -97,6 +97,7 @@ fn feed(chunk: &[u8], line: &mut [u8; LINE_MAX], ll: &mut usize) {
         if b == b'\n' || b == b'\r' {
             if *ll > 0 {
                 if let Some(fix) = ephemerkey_nmea::parse_rmc(&line[..*ll]) {
+                    gate::set_fix_valid(fix.valid);
                     if fix.valid {
                         clock::discipline_utc(fix.year, fix.month, fix.day, fix.hour, fix.min, fix.sec);
                     }
