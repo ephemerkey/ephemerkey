@@ -298,8 +298,14 @@ key 9, `crit:["cascade"]`) + `build_ritual` in `ephemerkey-config`; the emulator
 `configToCbor` encoders (`cose.ts` + `ekenv.mjs`, auto-injecting the cascade
 crit) with a serial-emu round-trip; and the firmware `generator::task` 3-button
 dial FSM (SW1/SW2/SW3 = PA5/PA15/PF3) building the ritual engine and gating
-reveals. Remaining: the OLED dial UI (reveals/dial state log over RTT today) and
-the generator's own stillness sensor (the ritual's stillness gate reads open).
+reveals. The dial / reveal UI is a shared render model (`ephemerkey-ui`): a
+`View` → a 21×4 character `Screen` the firmware blits to the 128×32 SSD1306 OLED
+(`display.rs`, ssd1306 + embedded-graphics) and the emulator paints to the
+terminal, so the sim shows what the device draws. The bench `hw-aes` build omits
+the panel for SRAM headroom (the `oled` cfg). Remaining: the generator's own
+stillness sensor, and the I2C1 shared-bus split so the generator gets the accel
+alongside the OLED (today the generator claims the bus for the display, the lock
+for the accel).
 
 ## More pedantic sequences (catalog)
 
