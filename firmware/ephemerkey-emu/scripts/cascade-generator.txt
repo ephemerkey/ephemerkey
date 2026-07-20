@@ -1,0 +1,31 @@
+# cascading generator: device B's REAL codes (key 0) are gated behind a ritual.
+# The ritual code is carried from device A (keys 2/3 stand in for A's display).
+# slot 2 (over key 0) is a downstream lock that proves a reveal was really real.
+# run: ekemu scenarios/cascade-generator.json < scripts/cascade-generator.txt
+
+echo == B is locked: pressing REVEAL yields an indistinguishable decoy ==
+gen reveal 0
+expect DECOY
+
+echo == device A emits its unlock code; carry it over and dial it into B ==
+gen reveal 2
+gen unlock @2
+expect FIRED slot=0 action=Unlock
+
+echo == B unlocked: the real code now flows, and a downstream lock accepts it ==
+gen reveal 0
+lock enter @3
+expect FIRED slot=2 action=Unlock
+
+echo == the window lapses after unlock_window_s: B re-locks to decoys ==
+time +31s
+gen reveal 0
+expect DECOY
+
+echo == duress cascade: A's DURESS code makes B look unlocked but only poison flows ==
+gen reveal 3
+gen unlock @5
+expect FIRED slot=1 action=DuressUnlock
+gen reveal 0
+expect DECOY
+quit

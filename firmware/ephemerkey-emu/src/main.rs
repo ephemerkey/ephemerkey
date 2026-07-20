@@ -11,6 +11,8 @@
 //!   time +<n>[s|m|h]        advance the virtual clock
 //!   time set <unix>         jump the clock
 //!   gen reveal [key]        request a code reveal (default key 0)
+//!   gen unlock <code|@N>    cascade: dial a code into the generator's unlock
+//!                           ritual (@N = a predecessor device's code)
 //!   gen next [key]          seconds until the next REAL reveal
 //!   lock enter <code|@N>    type a code at the lock (@N = Nth revealed
 //!                           code, 1-based — the "written down" notebook)
@@ -43,6 +45,11 @@ struct Scenario {
     seed: u32,
     keys: Vec<KeyCfg>,
     slots: Vec<SlotCfg>,
+    /// Cascade: seconds a ritual unlock keeps the generator's real reveals open
+    /// (the slots double as the generator's unlock ritual — dial codes with
+    /// `gen unlock`). Only meaningful when a key is `gated`.
+    #[serde(default = "default_unlock_window")]
+    unlock_window_s: u32,
     /// Critical features this config depends on: every entry must be in
     /// KNOWN_FEATURES or the scenario/config is refused outright.
     #[serde(default)]
@@ -68,6 +75,9 @@ struct CalendarCfg {
 }
 fn default_start() -> u64 {
     1_750_000_000
+}
+fn default_unlock_window() -> u32 {
+    30
 }
 
 #[derive(Deserialize)]
@@ -112,6 +122,11 @@ struct KeyCfg {
     /// Receipt chain: this key's REAL reveals require feeding the lock's
     /// receipt code back into the generator, then a cooling-off.
     chain: Option<ChainCfg>,
+    /// Cascade: this reveal key is ritual-gated. Its real code flows only while
+    /// a ritual unlock window is open (see `gen unlock`); otherwise it mints the
+    /// poison twin (if `decoy` set) or refuses.
+    #[serde(default)]
+    gated: bool,
 }
 
 #[derive(Deserialize)]
@@ -278,7 +293,7 @@ fn default_delay_max() -> u16 {
 /// shared engine + the platform gates the virtual env provides).
 pub fn known_features() -> Vec<&'static str> {
     let mut f = ephemerkey_core::SUPPORTED_POLICY_FEATURES.to_vec();
-    f.extend(["zones", "calendars"]);
+    f.extend(["zones", "calendars", "cascade"]);
     f
 }
 
@@ -288,7 +303,7 @@ pub fn known_features() -> Vec<&'static str> {
 /// firmware does on a sealed config. So the emulator exercises the same CBOR
 /// path the device ships (no separate mapping to drift out of sync), and its
 /// simulation genuinely runs on CBOR data.
-fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>, Calendars) {
+fn build(scn: &Scenario) -> (Generator, LockEngine, LockEngine, Option<Validator>, Calendars, u32) {
     for c in &scn.crit {
         assert!(
             known_features().contains(&c.as_str()),
@@ -301,8 +316,12 @@ fn build(scn: &Scenario) -> (Generator, LockEngine, Option<Validator>, Calendars
     (
         ephemerkey_config::build_generator(&model),
         ephemerkey_config::build_lock(&model),
+        // The generator's cascade ritual: the same slot table, consumed as an
+        // unlock ritual rather than a lock-consumer (see `gen unlock`).
+        ephemerkey_config::build_ritual(&model),
         ephemerkey_config::build_validator(&model),
         model.calendars(),
+        model.unlock_window_s,
     )
 }
 
@@ -315,15 +334,23 @@ fn scenario_to_cbor(scn: &Scenario) -> Vec<u8> {
     use ephemerkey_envelope::cbor::Enc;
     let mut buf = [0u8; 4096];
     let mut e = Enc::new(&mut buf);
+    // A generator cascade is in play when any key is gated; only then emit the
+    // unlock window (and the config must carry crit:["cascade"] to be accepted).
+    let has_cascade = scn.keys.iter().any(|k| k.gated);
     let mut top = 1u64; // role
     top += !scn.keys.is_empty() as u64;
     top += !scn.slots.is_empty() as u64;
     top += !scn.calendars.is_empty() as u64;
     top += scn.confirm.is_some() as u64;
     top += !scn.crit.is_empty() as u64;
+    top += has_cascade as u64;
     e.map(top).unwrap();
     e.uint(1).unwrap();
     e.uint(1).unwrap(); // placeholder role
+    if has_cascade {
+        e.uint(9).unwrap();
+        e.uint(scn.unlock_window_s as u64).unwrap();
+    }
     if !scn.keys.is_empty() {
         e.uint(4).unwrap();
         e.array(scn.keys.len() as u64).unwrap();
@@ -377,6 +404,7 @@ fn enc_key(e: &mut ephemerkey_envelope::cbor::Enc<'_>, k: &KeyCfg) {
     cnt += k.decoy.is_some() as u64;
     cnt += k.display.is_some() as u64;
     cnt += k.chain.is_some() as u64;
+    cnt += k.gated as u64;
     e.map(cnt).unwrap();
     e.uint(1).unwrap();
     e.bstr(k.secret.as_bytes()).unwrap();
@@ -424,6 +452,10 @@ fn enc_key(e: &mut ephemerkey_envelope::cbor::Enc<'_>, k: &KeyCfg) {
         e.uint(c.min_elapsed_s as u64).unwrap();
         e.uint(6).unwrap();
         e.uint(c.max_age_s as u64).unwrap();
+    }
+    if k.gated {
+        e.uint(7).unwrap();
+        e.bool(true).unwrap();
     }
 }
 
@@ -641,6 +673,12 @@ struct Emu {
     seed: u32,
     gen: Generator,
     lock: LockEngine,
+    /// Cascade: the generator's unlock ritual engine (dialed codes → reveal
+    /// window). Distinct from `lock`, which simulates a downstream lock consuming
+    /// generated codes. Same slot table, different consumer.
+    ritual: LockEngine,
+    /// Seconds a ritual unlock keeps real reveals open.
+    unlock_window_s: u32,
     env: Env,
     /// A remote party holding the lock's confirm secret (None = silent lock).
     validator: Option<Validator>,
@@ -679,6 +717,7 @@ impl Emu {
                 let k: usize = k.parse().unwrap_or(0);
                 self.cmd_chain(code, k)
             }
+            ["gen", "unlock", code] => self.cmd_unlock(code),
             ["gen", "reveal"] => self.cmd_reveal(0),
             ["gen", "reveal", k] => self.cmd_reveal(k.parse().unwrap_or(0)),
             ["gen", "next"] => self.cmd_next(0),
@@ -861,6 +900,33 @@ impl Emu {
         }
     }
 
+    /// Cascade: dial an unlock code into the generator's ritual engine.
+    /// `gen unlock <code|@N>` — `@N` pulls the Nth revealed code from the
+    /// notebook, i.e. a code carried over from a predecessor device (A→B).
+    /// A `Fired(unlock)` opens the reveal window; `Fired(duress)` opens a
+    /// poison-only window, both via the shared `apply_ritual_outcome`.
+    fn cmd_unlock(&mut self, code: &str) {
+        let code = if let Some(n) = code.strip_prefix('@') {
+            let i: usize = n.parse().unwrap_or(0);
+            match self.notebook.get(i.wrapping_sub(1)) {
+                Some(c) => c.clone(),
+                None => return self.event(format!("gen: no notebook entry @{n}")),
+            }
+        } else {
+            code.to_string()
+        };
+        self.env.now = self.now; // the ritual's own gates read the clock
+        let out = self.ritual.enter_code_with(&code, self.now, &self.env);
+        ephemerkey_core::reveal::apply_ritual_outcome(&mut self.gen, &out, self.now, self.unlock_window_s);
+        let s = describe(out);
+        let win = if self.gen.is_unlocked(self.now) {
+            format!(" — reveal window open until t={}", self.now + self.unlock_window_s as u64)
+        } else {
+            String::new()
+        };
+        self.event(format!("gen unlock: {s}{win}"));
+    }
+
     fn cmd_reveal(&mut self, k: usize) {
         self.seed = self.seed.wrapping_mul(1664525).wrapping_add(1013904223);
         match self.gen.reveal(k, self.now, self.seed) {
@@ -902,6 +968,9 @@ impl Emu {
             Err(RevealErr::ChainWait(u)) => {
                 let in_s = u.saturating_sub(self.now);
                 self.event(format!("gen: CHAINWAIT key={k} — reveals resume in {in_s}s"))
+            }
+            Err(RevealErr::Locked) => {
+                self.event(format!("gen: LOCKED key={k} — ritual not satisfied (blank display)"))
             }
         }
     }
@@ -1011,12 +1080,14 @@ fn main() {
     let scn: Scenario =
         serde_json::from_str(&std::fs::read_to_string(&arg).expect("read scenario"))
             .expect("parse scenario");
-    let (gen, lock, validator, calendars) = build(&scn);
+    let (gen, lock, ritual, validator, calendars, unlock_window_s) = build(&scn);
     let mut emu = Emu {
         now: scn.start_time,
         seed: scn.seed,
         gen,
         lock,
+        ritual,
+        unlock_window_s,
         env: Env { calendars, ..Default::default() },
         validator,
         last_event: String::new(),

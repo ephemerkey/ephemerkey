@@ -168,6 +168,139 @@ Generator-side display/reveal state is RAM-only and per-key, mirroring the
 lock's slot config so the countdown UX ("next code in 90 s") matches what
 the lock will actually accept.
 
+## Cascading generators (ritual-gated generation)
+
+So far a generator emits a code whenever its **emission gate** is open (valid
+fix, inside fence, fresh clock — `gate::may_emit`). That is a *place* gate. A
+generator can also sit behind a **ritual** gate: it will not reveal a key's
+real code until an unlock ritual has been performed on the device itself, and
+reveals a **decoy** (or silently refuses) until then. This makes generators
+first-class ritual devices, symmetric with the LockController, and lets them
+**cascade**: one device's output feeds the next device's ritual.
+
+**Ritual = entering TOTP codes.** The ritual is not button choreography — it is
+dialing in one or more 4–8 digit TOTP codes, exactly the codes a LockController
+consumes. So the generator embeds the *same* engine: a `LockEngine`
+(`ephemerkey-core::engine`) built from a slot table, validating dialed codes
+against any policy in the catalog (a single `AlwaysValid` code, a paced
+`Sequence`, a `Quorum`, a `Path`…). Nothing new in the engine — the generator
+holds **a `Generator` *and* a `LockEngine`**, and wires the lock's outcome to
+the reveal window:
+
+```
+dialed code --> LockEngine::enter_code_with(code, now, sensors)
+     Fired(unlock)  --> unlocked_until = now + window_s   (real reveals open)
+     Fired(duress)  --> unlocked_until = now + window_s, DECOY-ONLY (poison)
+     Progress/Gated --> stay locked (no distinct signal — see below)
+```
+
+`reveal(idx)` then gates on the ritual window in addition to the place gate.
+Real, decoy, and refusal already share one code path in
+`ephemerkey-core::reveal` (poison-mode indistinguishability), so the ritual
+gate only chooses *which* branch:
+
+| place gate (fix+fence+fresh) | ritual window | REVEAL yields |
+|------------------------------|---------------|---------------|
+| open | unlocked | **real code** |
+| open | locked | **decoy** if a twin is configured, else **silent refuse** (blank, no tone) |
+| open | duress-unlocked | **decoy** (device looks unlocked; only poison flows) |
+| closed | — | refuse (no fresh in-fence fix, unchanged) |
+
+A locked REVEAL never emits a "wrong ritual" signal — an error tone or distinct
+screen would leak that the ritual failed, defeating poison mode. Decoy if a
+decoy secret exists; otherwise a blank no-op.
+
+**The cascade.** A ritual leg is just a TOTP over some secret; make that secret
+one that *another device generates* and you have cascading devices:
+
+```
+Device A: unlock A (its ritual + fence) --> A reveals a code over K_cascade
+Human reads A's display, dials it into B within B's gap window
+Device B: that code satisfies a leg of B's ritual --> B unlocks --> B reveals
+```
+
+The "ritual" is physically walking the code from A to B; the `Sequence` gap
+windows (`gap_min`/`gap_max`) bound how long that walk may take, so a stale
+relayed code is rejected by construction. Within-device cascade (key X's ritual
+gates key Y) is the identical mechanism pointed at a *local* secret — purely a
+config choice. The existing receipt chain (`reveal::ChainSpec` / `feed_chain`,
+catalog #10) is the pre-wired **lock→generator** instance of this; ritual-gated
+generation generalizes it to any predecessor, generator or lock.
+
+**Duress cascade.** Because `Fired(duress)` opens a decoy-only window, a duress
+*ritual code* propagates deniably down a cascade: dial the duress code into A
+and every device downstream that keys off A's output now mints only poison,
+while looking unlocked to an observer.
+
+### Three-button generator UX
+
+The product generator has **three tactile buttons** and a small display — no
+keypad — yet must dial 4–8 digit codes, select among keys, reveal, and enter
+provisioning. The buttons are overloaded by *mode*, not multiplied. Naming them
+`●` (left), `◆` (center), `■` (right):
+
+**Dialing a code (LOCKED / DIAL mode):**
+
+| Button | Action |
+|--------|--------|
+| `●` | current digit −1 (wraps 9→0) |
+| `■` | current digit +1 (wraps 0→9) |
+| `◆` tap | accept digit → advance to next position |
+| `◆` double-tap | backspace (fix a mis-dialed digit) |
+| `◆` hold | submit the assembled code to the engine |
+
+Nearest-direction increment means any digit is ≤5 presses; the center button
+carries accept / backspace / submit by tap / double / hold. The display shows
+the code-so-far with a cursor (`[ 4 _ _ _ _ _ ]`).
+
+**State machine:**
+
+```
+SLEEP ──any press──▶ LOCKED / DIAL   [ _ _ _ _ _ _ ]
+        (◆ long-hold at boot ──▶ USB provisioning, unchanged)
+   submit ─┬─ Progress ─▶ DIAL next code   (display: ✓ n/m, gap countdown)
+           ├─ Fired(unlock) ─▶ UNLOCKED (window countdown running)
+           ├─ Fired(duress) ─▶ UNLOCKED (decoy-only, indistinguishable)
+           └─ Invalid/Gated ─▶ back to DIAL   (no distinct error — silent)
+
+UNLOCKED:  ● prev-key   ■ next-key   ◆ REVEAL selected key
+           auto re-lock on window expiry or idle timeout
+```
+
+Multi-code rituals reuse the lock's timing gates directly: dial code 1 → submit
+→ engine returns `Progress` → the UI shows `✓ 1/3` and counts down the
+`gap_min`/`gap_max` window before code 2 is accepted. A cascade leg is where the
+human leaves to go generate the next code on another device; the gap window is
+sized for that trip.
+
+### What this reuses vs. adds
+
+Reused unchanged: `LockEngine` + the whole policy catalog, `reveal.rs` poison
+mode / decoy indistinguishability, the receipt-chain primitive, the emission
+gate. New work is small and mostly wiring:
+
+- **core** — the `Generator` gains an optional embedded `LockEngine` and a
+  `unlocked_until` window; `reveal()` consults it (real vs. decoy vs. refuse per
+  the table). No new policy types.
+- **firmware** — a 3-button input task (dial → assemble → `enter_code_with`);
+  wire the two currently-unused buttons (only `PA5` is read today).
+- **config schema** — let the **Generator** role carry a `slots` ritual table
+  plus a reveal `window_s` and a per-key "gated" flag; add encoders to
+  `cose.ts` / `ekenv.mjs` and the emulator so the wire format agrees across all
+  three producers.
+- **emu** — model the dial as CLI commands and the reveal window, so cascades
+  are exercised end-to-end (A→B) on host without hardware.
+
+**Implemented** across the stack: the reveal-window gate + `apply_ritual_outcome`
+in `ephemerkey-core::reveal`; the schema (`gated` key field 7, `unlock_window_s`
+key 9, `crit:["cascade"]`) + `build_ritual` in `ephemerkey-config`; the emulator
+`gen unlock` command + `cascade-generator` scenario (in `make demo`); the
+`configToCbor` encoders (`cose.ts` + `ekenv.mjs`, auto-injecting the cascade
+crit) with a serial-emu round-trip; and the firmware `generator::task` 3-button
+dial FSM (SW1/SW2/SW3 = PA5/PA15/PF3) building the ritual engine and gating
+reveals. Remaining: the OLED dial UI (reveals/dial state log over RTT today) and
+the generator's own stillness sensor (the ritual's stillness gate reads open).
+
 ## More pedantic sequences (catalog)
 
 1. **Rhythm lock** — codes must arrive at a fixed cadence ± tolerance
@@ -268,7 +401,10 @@ counter in the flash journal and wire the relay to OLED/USB/WiFi.
 - Where codes physically enter a LockController: USB console and WiFi are
   free; a keypad is new hardware; the lock-board I2C link is master-out
   today. Nearest-term: the paired generator relays user-entered codes? To
-  decide when the controller personality gets its first real deployment.
+  decide when the controller personality gets its first real deployment. (The
+  generator's **three-button dial** — see "Cascading generators" — is the
+  same problem solved with existing buttons; it is a candidate entry method
+  for the lock too, though slow for the lock's frequent use.)
 - Slot count / config-file size budget (flash journal page = 2 KB, so ~a
   dozen slots with zone tables fits comfortably).
 - ~~Whether confirm-TOTP should be HOTP (event counter) rather than TOTP~~

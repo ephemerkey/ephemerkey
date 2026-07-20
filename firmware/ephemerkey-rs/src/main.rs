@@ -180,7 +180,17 @@ async fn main(spawner: Spawner) {
                     .unwrap(),
             );
             let gen = ephemerkey_config::build_generator(&cfg);
-            spawner.spawn(generator::task(gen, prov_button).unwrap());
+            let ritual = ephemerkey_config::build_ritual(&cfg);
+            // The 3-button cascade dial: ● SW1 (PA5, the prov button on the
+            // normal path), ◆ SW2 (PA15), ■ SW3 (PF3, active-high / BOOT0).
+            let buttons = generator::DialButtons {
+                left: prov_button,
+                center: Input::new(p.PA15, Pull::Up),
+                right: Input::new(p.PF3, Pull::Down),
+            };
+            spawner.spawn(
+                generator::task(gen, ritual, cfg.calendars(), cfg.unlock_window_s, buttons).unwrap(),
+            );
         }
         #[cfg(feature = "lock")]
         config::Role::LockController => {

@@ -74,7 +74,7 @@ async fn pump<'d>(
         }
         // A response that is an exact multiple of the packet size needs a
         // zero-length packet to signal end-of-transfer to the host.
-        if out.len() % PACKET == 0 {
+        if out.len().is_multiple_of(PACKET) {
             class.write_packet(&[]).await?;
         }
     }

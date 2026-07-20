@@ -5,7 +5,7 @@
 //! mint from. The returned [`Reveal`] carries no is-decoy information unless
 //! the `introspect` feature is on (emulator/tests only — never firmware).
 
-use crate::engine::KeyDef;
+use crate::engine::{KeyDef, Outcome};
 use crate::policy::{Action, MAX_KEYS};
 use crate::receipt::{ReceiptCheck, Validator};
 use crate::totp::{totp_at, Code, MAX_DIGITS};
@@ -95,6 +95,10 @@ pub enum RevealErr {
     ChainRequired,
     /// Receipt fed; cooling-off runs until this unix time.
     ChainWait(u64),
+    /// Ritual-gated key with no unlock window open and no decoy twin to fall
+    /// back on: reveal nothing (the firmware blanks — no distinct signal, so
+    /// an observer can't tell a failed ritual from an idle device).
+    Locked,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -119,6 +123,18 @@ struct GenKeyState {
 pub struct Generator {
     pub keys: [Option<GenKey>; MAX_KEYS],
     state: [GenKeyState; MAX_KEYS],
+    /// Ritual gate (cascading generation): a key with `gated[idx]` set reveals
+    /// its REAL code only while `now < unlocked_until`; otherwise it mints the
+    /// poison twin (or refuses). Non-cascade generators leave `gated` all-false
+    /// and these windows unused, so behavior is exactly as before.
+    gated: [bool; MAX_KEYS],
+    /// Real reveals are permitted until this unix time (set by a ritual
+    /// `Fired(unlock)` via [`apply_ritual_outcome`]). 0 = locked.
+    unlocked_until: u64,
+    /// A duress ritual opened a window: the device LOOKS unlocked but every
+    /// gated key mints poison until this unix time. Checked before
+    /// `unlocked_until`, so it wins.
+    duress_until: u64,
 }
 
 impl Default for Generator {
@@ -132,7 +148,38 @@ impl Generator {
         Self {
             keys: [None; MAX_KEYS],
             state: [GenKeyState::default(); MAX_KEYS],
+            gated: [false; MAX_KEYS],
+            unlocked_until: 0,
+            duress_until: 0,
         }
+    }
+
+    /// Mark key `idx` as ritual-gated (built from the config's `gated` flag).
+    pub fn set_gated(&mut self, idx: usize, gated: bool) {
+        if idx < MAX_KEYS {
+            self.gated[idx] = gated;
+        }
+    }
+
+    /// Open the real-reveal window until `until` (unix). Called by
+    /// [`apply_ritual_outcome`] on a ritual `Fired(unlock)`.
+    pub fn set_unlocked(&mut self, until: u64) {
+        self.unlocked_until = until;
+    }
+
+    /// Open a DURESS window until `until` (unix): the device presents as
+    /// unlocked but only poison flows. Also raises `unlocked_until` so the UI
+    /// state ("unlocked") is itself indistinguishable.
+    pub fn set_duress(&mut self, until: u64) {
+        self.duress_until = until;
+        if until > self.unlocked_until {
+            self.unlocked_until = until;
+        }
+    }
+
+    /// Whether the reveal window is currently open (UI countdown helper).
+    pub fn is_unlocked(&self, now: u64) -> bool {
+        now < self.unlocked_until
     }
 
     /// Request a code reveal for key `idx` at unix `now`. `entropy` feeds
@@ -144,6 +191,28 @@ impl Generator {
             .copied()
             .flatten()
             .ok_or(RevealErr::NoSuchKey)?;
+
+        // Ritual gate (outermost): a duress window forces poison regardless; a
+        // gated key with no open unlock window mints poison too. Both route
+        // through the shared decoy branch so the reveal is indistinguishable
+        // from a real one — and neither touches `last_real`/chain state, so the
+        // legitimate cadence is unperturbed. `Locked` (no twin) reveals nothing.
+        let in_duress = now < self.duress_until;
+        let ritual_locked = self.gated[idx] && now >= self.unlocked_until;
+        if in_duress || ritual_locked {
+            let d = gk.decoy.ok_or(RevealErr::Locked)?;
+            let code = totp_at(d.secret(), now, d.digits);
+            return Ok(Reveal {
+                code,
+                order: scatter_order(code.digits, entropy),
+                mode: gk.display.mode,
+                dwell_ms: gk.display.dwell_ms,
+                reveal_s: gk.display.reveal_s,
+                #[cfg(feature = "introspect")]
+                decoy: true,
+            });
+        }
+
         let st = &mut self.state[idx];
 
         // Receipt chain: real reveals need a fresh witnessed receipt plus
@@ -240,6 +309,24 @@ impl Generator {
     }
 }
 
+/// Apply a ritual engine's [`Outcome`] to the generator's reveal window, the
+/// single glue point between the cascade ritual ([`LockEngine`]) and the
+/// reveal side. Firmware and emulator both route their `enter_code_with`
+/// result through here, so on-device and simulated cascades can't diverge.
+///
+/// A `Fired(unlock)` opens a real window for `window_s`; a `Fired(duress)`
+/// opens an indistinguishable poison-only window; everything else
+/// (progress, gated, invalid) leaves the generator locked.
+///
+/// [`LockEngine`]: crate::engine::LockEngine
+pub fn apply_ritual_outcome(gen: &mut Generator, out: &Outcome, now: u64, window_s: u32) {
+    match out {
+        Outcome::Fired(_, Action::Unlock) => gen.set_unlocked(now + window_s as u64),
+        Outcome::Fired(_, Action::DuressUnlock) => gen.set_duress(now + window_s as u64),
+        _ => {}
+    }
+}
+
 /// Fisher-Yates over digit positions with a tiny xorshift PRNG. Presentation
 /// order only — no security weight beyond shoulder-surf resistance.
 fn scatter_order(digits: u8, seed: u32) -> [u8; MAX_DIGITS as usize] {
@@ -321,6 +408,67 @@ mod tests {
         // And the real stream resumes on cadence:
         let real2 = g.reveal(0, t + 95, 7).unwrap();
         assert!(!real2.decoy);
+    }
+
+    #[cfg(feature = "introspect")]
+    #[test]
+    fn ritual_gate_locked_reveals_decoy_until_unlocked() {
+        let mut g = Generator::new();
+        g.keys[0] = Some(genkey(OnceMode::Unlimited));
+        g.set_gated(0, true);
+        let t = 1_750_000_000u64;
+
+        // Locked: a gated key mints the (indistinguishable) poison twin.
+        let poison = g.reveal(0, t, 7).unwrap();
+        assert!(poison.decoy);
+
+        // A ritual unlock opens the window; reveals go real for its duration.
+        apply_ritual_outcome(&mut g, &Outcome::Fired(1, Action::Unlock), t, 30);
+        assert!(g.is_unlocked(t + 10));
+        assert!(!g.reveal(0, t + 10, 7).unwrap().decoy);
+
+        // Window closes → back to poison, no separate signal.
+        assert!(!g.is_unlocked(t + 30));
+        assert!(g.reveal(0, t + 30, 7).unwrap().decoy);
+    }
+
+    #[test]
+    fn ritual_gate_without_twin_refuses_then_reveals() {
+        let mut g = Generator::new();
+        let mut gk = genkey(OnceMode::Unlimited);
+        gk.decoy = None; // no poison twin → locked reveal yields nothing
+        g.keys[0] = Some(gk);
+        g.set_gated(0, true);
+        let t = 1_750_000_000u64;
+
+        assert_eq!(g.reveal(0, t, 7).err(), Some(RevealErr::Locked));
+        apply_ritual_outcome(&mut g, &Outcome::Fired(0, Action::Unlock), t, 30);
+        assert!(g.reveal(0, t + 5, 7).is_ok());
+    }
+
+    #[cfg(feature = "introspect")]
+    #[test]
+    fn duress_ritual_looks_unlocked_but_mints_poison() {
+        let mut g = Generator::new();
+        g.keys[0] = Some(genkey(OnceMode::Unlimited));
+        g.set_gated(0, true);
+        let t = 1_750_000_000u64;
+
+        apply_ritual_outcome(&mut g, &Outcome::Fired(2, Action::DuressUnlock), t, 30);
+        // Presents as unlocked (indistinguishable UI state)...
+        assert!(g.is_unlocked(t + 10));
+        // ...but every reveal in the window is poison.
+        assert!(g.reveal(0, t + 10, 7).unwrap().decoy);
+    }
+
+    #[test]
+    fn ungated_key_ignores_ritual_window() {
+        // A non-cascade key reveals real regardless of the (unused) windows.
+        let mut g = Generator::new();
+        g.keys[0] = Some(genkey(OnceMode::Unlimited));
+        // gated stays false
+        let t = 1_750_000_000u64;
+        assert!(g.reveal(0, t, 7).is_ok());
     }
 
     #[test]

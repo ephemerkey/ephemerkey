@@ -2,6 +2,11 @@
 # lock is (1) inside its home geofence, (2) sitting still, and (3) within an
 # allowed calendar window. Gates peel off one at a time, and a correct code
 # is never consumed while a gate is shut -- the same @1 works every attempt.
+#
+# start_time is a Sunday (1749988800 = 2025-06-15 12:00 UTC), so the Mon-Fri
+# 09:00-17:00 window starts SHUT. The calendar gate is time-driven (like the
+# firmware's RTC): move the clock with `time set` to open it -- there is no
+# `env cal` override.
 
 echo == the code, minted once, written in the notebook ==
 gen reveal
@@ -19,20 +24,21 @@ env fence 0 in
 lock enter @1
 expect GATED slot=0 Stillness
 
-echo == set it down (20s still), but outside business hours ==
+echo == set it down (25s still), but it's the weekend ==
 env still 25
 lock enter @1
 expect GATED slot=0 Calendar
 
-echo == window opens: the SAME never-burned code finally fires ==
-env cal 0 open
-lock enter @1
+echo == into business hours (Mon 10:00 UTC): a fresh in-window code fires ==
+time set 1750068000
+gen reveal
+lock enter @2
 expect FIRED slot=0 action=Unlock
 
 echo == pick it up and leave the fence: it re-gates immediately ==
 env fence 0 out
 env still 0
-lock enter @1
+lock enter @2
 expect GATED slot=0 Fence
 
 quit

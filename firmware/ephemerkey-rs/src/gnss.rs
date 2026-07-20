@@ -15,6 +15,7 @@
 //! the 30 s TOTP window). Sub-second alignment — applying the pending UTC
 //! exactly on the PPS edge, or nudging RTC SHIFTR — is the next refinement; the
 //! PPS edge is already surfaced here for it.
+#![allow(clippy::too_many_arguments)] // task() takes one peripheral per line
 
 use defmt::{info, warn};
 use embassy_futures::select::{select, Either};

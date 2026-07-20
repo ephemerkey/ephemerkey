@@ -64,6 +64,13 @@ pub fn update_from_fix(valid: bool, lat_e7: i32, lon_e7: i32) {
     IN_FENCE.store(in_fence, Ordering::Relaxed);
 }
 
+/// Whether the last GNSS fix was inside an authorized fence (the raw latch,
+/// without the freshness check). Feeds the generator ritual's `own_fence`
+/// gate — the generator's own position gate reuses the emission fence.
+pub fn in_fence() -> bool {
+    IN_FENCE.load(Ordering::Relaxed)
+}
+
 /// Whether the device may currently emit a TOTP: the last fix was in-fence and
 /// the clock (disciplined at that fix) is still fresh.
 pub fn may_emit() -> bool {

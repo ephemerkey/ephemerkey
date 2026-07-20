@@ -20,12 +20,14 @@
 //! | 3 | zones        | `[[lat_e7, lon_e7, radius_m]]` |
 //! | 4 | keys         | `[key]` |
 //! | 5 | slots        | `[slot]` |
-//! | 6 | calendars    | (reserved; skipped) |
+//! | 6 | calendars    | `[cal-window]` |
 //! | 7 | confirm      | confirm-map |
 //! | 8 | crit         | `[tstr]` — refused unless every entry is in `known_features` |
+//! | 9 | unlock_window_s | uint — reveal window a ritual `Fired(unlock)` opens (generator; default 30) |
 //!
 //! **key**: 1 secret(bstr) · 2 digits · 3 decoy(idx) · 4 display · 5 chain ·
-//! 6 zone(idx, reserved). **display**: 1 mode(0 plain/1 scatter) · 2 dwell_ms ·
+//! 6 zone(idx, reserved) · 7 gated(bool — cascade: reveal real only while
+//! unlocked, else decoy/refuse). **display**: 1 mode(0 plain/1 scatter) · 2 dwell_ms ·
 //! 3 reveal_s · 4 once(0 unlimited/1 refuse/2 decoy) · 5 gap_min_s. **chain**:
 //! 1 secret · 2 digits · 3 mode(0 seq/1 time/2 both) · 4 action · 5
 //! min_elapsed_s · 6 max_age_s. **slot**: 1 key · 2 action · 3 policy · 4
@@ -54,7 +56,12 @@ pub use ephemerkey_envelope::config::{Role, Zone, DEFAULT_STALENESS_S, MAX_RADIU
 /// The feature tags this crate's `build` fully honors. A config whose `crit`
 /// list (key 8) names anything outside the caller's known set is refused —
 /// the firmware and emulator each pass their own capability list to [`parse`].
-pub const SUPPORTED_FEATURES: &[&str] = &["seq-jitter", "quorum-pace", "chain", "veto", "budget"];
+pub const SUPPORTED_FEATURES: &[&str] =
+    &["seq-jitter", "quorum-pace", "chain", "veto", "budget", "cascade"];
+
+/// Default reveal window (seconds) a ritual unlock opens when a generator
+/// config omits `unlock_window_s`.
+pub const DEFAULT_UNLOCK_WINDOW_S: u32 = 30;
 
 /// Most calendar windows a single config may carry (fixed RAM footprint).
 pub const MAX_CALENDARS: usize = 8;
@@ -131,6 +138,9 @@ struct KeyEntry {
     chain: Option<ChainSpec>,
     /// Had a display or chain in the config, i.e. it's a generator key.
     is_gen: bool,
+    /// Cascade: this reveal key is ritual-gated (key field 7). Real codes flow
+    /// only while a ritual unlock window is open; otherwise poison/refuse.
+    gated: bool,
 }
 
 /// The lock's confirm-TOTP identity (secret copied out of the config).
@@ -148,6 +158,9 @@ struct ConfirmEntry {
 pub struct DeviceModel {
     pub role: Role,
     pub staleness_s: u32,
+    /// Reveal window (seconds) a generator's ritual unlock opens. See
+    /// [`build_ritual`] / [`ephemerkey_core::reveal::apply_ritual_outcome`].
+    pub unlock_window_s: u32,
     zones: [Zone; MAX_ZONES],
     zone_count: usize,
     keys: [Option<KeyEntry>; MAX_KEYS],
@@ -168,6 +181,7 @@ impl DeviceModel {
         DeviceModel {
             role: Role::Generator,
             staleness_s: DEFAULT_STALENESS_S,
+            unlock_window_s: DEFAULT_UNLOCK_WINDOW_S,
             zones: [Zone::default(); MAX_ZONES],
             zone_count: 0,
             keys: [None; MAX_KEYS],
@@ -216,6 +230,7 @@ pub fn parse(cbor: &[u8], known_features: &[&str]) -> Result<DeviceModel, Error>
             6 => parse_calendars(&mut d, &mut m)?,
             7 => m.confirm = Some(parse_confirm(&mut d)?),
             8 => check_crit(&mut d, known_features)?,
+            9 => m.unlock_window_s = d.uint()? as u32,
             _ => d.skip()?,
         }
     }
@@ -265,8 +280,19 @@ pub fn build_generator(m: &DeviceModel) -> Generator {
             gap_min_s: 0,
         });
         gen.keys[i] = Some(GenKey { key: k.def, decoy, display, chain: k.chain });
+        gen.set_gated(i, k.gated);
     }
     gen
+}
+
+/// The cascade ritual engine for a generator: the [`LockEngine`] over the same
+/// key + slot table that validates dialed unlock codes. A `Fired(unlock)` from
+/// it opens the reveal window (see
+/// [`ephemerkey_core::reveal::apply_ritual_outcome`]); a generator with no
+/// slots yields an inert engine that never fires. Structurally identical to
+/// [`build_lock`] — the generator just consumes the outcome differently.
+pub fn build_ritual(m: &DeviceModel) -> LockEngine {
+    build_lock(m)
 }
 
 /// The validator a remote party (or the generator's chain) holds over the
@@ -321,6 +347,7 @@ fn parse_key(d: &mut Dec) -> Result<KeyEntry, Error> {
     let mut decoy: Option<u8> = None;
     let mut display: Option<DisplaySpec> = None;
     let mut chain: Option<ChainSpec> = None;
+    let mut gated = false;
 
     for _ in 0..n {
         match d.uint()? {
@@ -332,6 +359,7 @@ fn parse_key(d: &mut Dec) -> Result<KeyEntry, Error> {
             3 => decoy = Some(d.uint()? as u8),
             4 => display = Some(parse_display(d)?),
             5 => chain = Some(parse_chain(d)?),
+            7 => gated = d.bool()?,
             _ => d.skip()?, // 6 zone-binding (reserved) + forward-compat
         }
     }
@@ -340,7 +368,7 @@ fn parse_key(d: &mut Dec) -> Result<KeyEntry, Error> {
     }
     let def = KeyDef { secret, secret_len, digits, decoy };
     let is_gen = display.is_some() || chain.is_some();
-    Ok(KeyEntry { def, display, chain, is_gen })
+    Ok(KeyEntry { def, display, chain, is_gen, gated })
 }
 
 fn parse_display(d: &mut Dec) -> Result<DisplaySpec, Error> {
@@ -860,6 +888,90 @@ mod tests {
         // the revealed code matches the key's TOTP
         assert_eq!(r.code, totp_at(b"GENSECRET", NOW, 6));
         assert!(build_validator(&m).is_some());
+    }
+
+    #[test]
+    fn cascade_ritual_gates_generator() {
+        // A generator whose reveal key 0 (with decoy twin key 1) is ritual-
+        // gated; dialing the unlock code (key 2) via the ritual engine opens
+        // the reveal window. crit:["cascade"] guards the downgrade.
+        let mut buf = [0u8; 320];
+        let mut e = Enc::new(&mut buf);
+        e.map(5).unwrap();
+        e.uint(1).unwrap();
+        e.uint(1).unwrap(); // role generator
+        e.uint(9).unwrap();
+        e.uint(30).unwrap(); // unlock_window_s
+        e.uint(4).unwrap(); // keys
+        e.array(3).unwrap();
+        // key 0: gated reveal key with display + decoy twin (idx 1)
+        e.map(5).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(b"REVEALSEC").unwrap();
+        e.uint(2).unwrap();
+        e.uint(6).unwrap();
+        e.uint(3).unwrap();
+        e.uint(1).unwrap(); // decoy = key 1
+        e.uint(4).unwrap(); // display
+        e.map(1).unwrap();
+        e.uint(1).unwrap();
+        e.uint(0).unwrap(); // mode plain
+        e.uint(7).unwrap();
+        e.bool(true).unwrap(); // gated
+        // key 1: the poison twin
+        e.map(2).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(b"DECOYSEC0").unwrap();
+        e.uint(2).unwrap();
+        e.uint(6).unwrap();
+        // key 2: the ritual unlock secret (dialed in)
+        e.map(2).unwrap();
+        e.uint(1).unwrap();
+        e.bstr(b"UNLOCKSEC").unwrap();
+        e.uint(2).unwrap();
+        e.uint(6).unwrap();
+        e.uint(5).unwrap(); // slots
+        e.array(1).unwrap();
+        e.map(3).unwrap();
+        e.uint(1).unwrap();
+        e.uint(2).unwrap(); // ritual over key 2
+        e.uint(2).unwrap();
+        e.uint(0).unwrap(); // action unlock
+        e.uint(3).unwrap(); // policy
+        e.map(1).unwrap();
+        e.uint(1).unwrap();
+        e.uint(0).unwrap(); // always
+        e.uint(8).unwrap(); // crit
+        e.array(1).unwrap();
+        e.tstr("cascade").unwrap();
+        let n = e.len();
+
+        // Safety: a device that doesn't implement cascade must REFUSE, not
+        // silently reveal ungated.
+        assert!(matches!(parse(&buf[..n], &["seq-jitter"]), Err(Error::Unsupported)));
+
+        let m = parse(&buf[..n], FW).unwrap();
+        assert_eq!(m.role, Role::Generator);
+        assert_eq!(m.unlock_window_s, 30);
+        let mut gen = build_generator(&m);
+        let mut ritual = build_ritual(&m);
+        let mut cb = [0u8; 10];
+
+        // Locked: reveal mints the indistinguishable poison twin.
+        assert!(gen.reveal(0, NOW, 9).unwrap().decoy);
+
+        // Dial the unlock code → ritual fires → window opens.
+        let out = ritual.enter_code(code_str(b"UNLOCKSEC", NOW, 6, &mut cb), NOW);
+        assert!(matches!(out, Outcome::Fired(0, Action::Unlock)), "got {:?}", out);
+        ephemerkey_core::reveal::apply_ritual_outcome(&mut gen, &out, NOW, m.unlock_window_s);
+
+        // Now real, and it is the reveal key's TOTP (not the decoy's).
+        let r = gen.reveal(0, NOW + 1, 9).unwrap();
+        assert!(!r.decoy);
+        assert_eq!(r.code, totp_at(b"REVEALSEC", NOW + 1, 6));
+
+        // After the window, poison again.
+        assert!(gen.reveal(0, NOW + 31, 9).unwrap().decoy);
     }
 
     #[test]
