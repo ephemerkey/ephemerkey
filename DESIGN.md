@@ -75,10 +75,13 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
   **Rm1** (0 Ω → the on-board W3011A, default) and **Cs1** (DNP → **J6**, a
   Hirose U.FL-R-SMT-1 on `Connector_Coaxial:U.FL_…`). Populate exactly one: to
   run an external antenna, DNP Rm1, fit Cs1 (0 Ω or a DC-block cap), and cable
-  in via the U.FL. A *passive* external patch needs no bias; an *active* antenna
-  (built-in LNA) needs a bias-tee (RFC from +3V3 + DC block) — not fitted, add if
-  that route is taken. Keeps the tiny chip antenna as the cheap default while
-  leaving a path to a higher-gain external element.
+  in via the U.FL. A *passive* external patch needs no bias. For an *active*
+  antenna (built-in LNA), an on-board **bias-tee** is present but **DNP** — fit
+  Cs1 as a DC-block cap (~10–33 pF), **L3** as an RF choke from +3V3 to the
+  Cs1↔J6 node, and **C33** (100 nF) as the +3V3 RF bypass; DC then rides up the
+  coax to the antenna LNA while Cs1 keeps it off RF_IN. Keeps the tiny chip
+  antenna as the cheap default while leaving a populate-only path to a
+  higher-gain external element — no respin.
 
 ### Power: TPS63900DSKR (buck-boost)
 

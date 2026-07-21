@@ -213,7 +213,12 @@ GNSS = dict(name="GNSS", file="gnss.kicad_sch", title="GNSS (MAX-M10S + antenna)
         dict(ref="J6", lib_id="Connector_Generic:Conn_01x02", value="U.FL",
              fp="Connector_Coaxial:U.FL_Hirose_U.FL-R-SMT-1_Vertical",
              lcsc="C88373", mpn="U.FL-R-SMT-1(10)", mfr="Hirose"),
-        dict(ref="Cs1", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),  # RF_IN -> J6 select
+        dict(ref="Cs1", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),  # RF_IN -> J6 select / DC block
+        # Bias-tee for an ACTIVE external antenna (all DNP by default): inject
+        # DC on the J6 side of Cs1 through an RF choke; Cs1 then blocks that DC
+        # from RF_IN. L3 = RFC (high-Z at L1), C33 = +3V3 supply RF-bypass.
+        dict(ref="L3", lib_id="Device:L", value="DNP", fp=L0402, dnp=True),
+        dict(ref="C33", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),
     ])
 
 # ============================ Sensors sheet ==================================
@@ -390,10 +395,13 @@ ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 =
           (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.
           Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.
 ANT SELECT (contingency):  RF_IN taps two series positions -- Rm1 (0R -> W3011A chip ant, DEFAULT) and Cs1
-          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  External antenna: DNP Rm1, fit Cs1 (0R or a DC-block cap),
-          attach via U.FL.  A passive external patch needs no bias.  An ACTIVE antenna (built-in LNA) needs a
-          bias-tee to feed DC up the coax -- NOT fitted here; add an L (RFC) from +3V3 + DC-block if that route
-          is taken.  Keep the unused branch stub short (<< lambda/20).""")
+          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  Keep the unused branch stub short (<< lambda/20).
+  PASSIVE external patch:  DNP Rm1, fit Cs1 = 0R (or a small DC-block cap), attach via U.FL.  No bias.
+  ACTIVE external antenna (built-in LNA) -- bias-tee, all DNP by default:  DNP Rm1; fit Cs1 as a DC-block cap
+          (~10-33pF, low-Z at L1); fit L3 (RFC, high-Z at L1 -- e.g. ~100nH or a ferrite) from +3V3 to the
+          Cs1<->J6 node, with C33 (100nF) +3V3 RF-bypass to GND.  DC rides +3V3 -> L3 -> U.FL centre -> coax ->
+          antenna LNA; Cs1 blocks it from RF_IN (which also has an internal DC block).  Size L3 for the LNA
+          current and > a few hundred ohms at 1.575 GHz.""")
 
 SENSORS["note"] = (12, 70, """Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.
 U5 LIS3DH:

@@ -1550,7 +1550,7 @@
 		(embedded_fonts no)
 	)
 	)
-	(text "GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.\nMD1 MAX-M10S (18-pin LCC):\n  1  GND        GND                  10  GND        GND\n  2  TXD        -> PA10 (NMEA)       11  RF_IN      <- match <- AE1\n  3  RXD        <- PA9  (NMEA)       12  GND        GND\n  4  TIMEPULSE  -> PA0 (1PPS)        13  LNA_EN     NC (passive antenna)\n  5  EXTINT     <- PA1               14  VCC_RF     L2 ferrite + C17 100nF / C18 10pF\n  6  V_BCKP     +3V3 always-on, C21  15  VIO_SEL    open = 3.3V\n  7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)\n  8  VCC        +3V3, C19 10uF/C20   17  SCL        NC\n  9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet\nANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed\n          (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up\n          (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.\n          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.\nANT SELECT (contingency):  RF_IN taps two series positions -- Rm1 (0R -> W3011A chip ant, DEFAULT) and Cs1\n          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  External antenna: DNP Rm1, fit Cs1 (0R or a DC-block cap),\n          attach via U.FL.  A passive external patch needs no bias.  An ACTIVE antenna (built-in LNA) needs a\n          bias-tee to feed DC up the coax -- NOT fitted here; add an L (RFC) from +3V3 + DC-block if that route\n          is taken.  Keep the unused branch stub short (<< lambda/20)."
+	(text "GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.\nMD1 MAX-M10S (18-pin LCC):\n  1  GND        GND                  10  GND        GND\n  2  TXD        -> PA10 (NMEA)       11  RF_IN      <- match <- AE1\n  3  RXD        <- PA9  (NMEA)       12  GND        GND\n  4  TIMEPULSE  -> PA0 (1PPS)        13  LNA_EN     NC (passive antenna)\n  5  EXTINT     <- PA1               14  VCC_RF     L2 ferrite + C17 100nF / C18 10pF\n  6  V_BCKP     +3V3 always-on, C21  15  VIO_SEL    open = 3.3V\n  7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)\n  8  VCC        +3V3, C19 10uF/C20   17  SCL        NC\n  9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet\nANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed\n          (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up\n          (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.\n          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.\nANT SELECT (contingency):  RF_IN taps two series positions -- Rm1 (0R -> W3011A chip ant, DEFAULT) and Cs1\n          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  Keep the unused branch stub short (<< lambda/20).\n  PASSIVE external patch:  DNP Rm1, fit Cs1 = 0R (or a small DC-block cap), attach via U.FL.  No bias.\n  ACTIVE external antenna (built-in LNA) -- bias-tee, all DNP by default:  DNP Rm1; fit Cs1 as a DC-block cap\n          (~10-33pF, low-Z at L1); fit L3 (RFC, high-Z at L1 -- e.g. ~100nH or a ferrite) from +3V3 to the\n          Cs1<->J6 node, with C33 (100nF) +3V3 RF-bypass to GND.  DC rides +3V3 -> L3 -> U.FL centre -> coax ->\n          antenna LNA; Cs1 blocks it from RF_IN (which also has an internal DC block).  Size L3 for the LNA\n          current and > a few hundred ohms at 1.575 GHz."
 		(exclude_from_sim no)
 		(at 12 137.92 0)
 		(effects
@@ -4118,6 +4118,78 @@
 			(project "ephemerkey"
 				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
 					(reference "Cs1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:L")
+		(at 106.6800 152.4000 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp yes)
+		(uuid "7b08e731-c4a2-4def-b93a-fb94eaa16f60")
+		(property "Reference" "L3"
+			(at 110.4900 149.8600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "DNP"
+			(at 110.4900 154.9400 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Inductor_SMD:L_0402_1005Metric"
+			(at 106.6800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 106.6800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "755c1b35-237e-4285-b012-5bee7551c640"))
+		(pin "2" (uuid "29343e60-d3bb-4e00-8f95-f22cdade6035"))
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
+					(reference "L3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 144.7800 152.4000 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp yes)
+		(uuid "5cfdd48a-62a9-4f42-86b3-39db2a699eda")
+		(property "Reference" "C33"
+			(at 148.5900 149.8600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "DNP"
+			(at 148.5900 154.9400 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 144.7800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 144.7800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "62b78c26-869c-429d-a19a-dd89a4689dbf"))
+		(pin "2" (uuid "5c2b6877-4257-43c8-98d1-97d12e7a9055"))
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
+					(reference "C33")
 					(unit 1)
 				)
 			)
