@@ -92,7 +92,7 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
   LiSOCl₂ cell. Output set to **3.3V**.
 - Powers everything: STM32 (VDD/VDDA/VDDUSB), MAX-M10S (VCC/VCC_RF/V_IO),
   LIS3DH, and the V_BCKP tap.
-- 0.4A capability comfortably covers the GNSS acquisition peak (~30mA) and USB.
+- 0.4A capability comfortably covers the GNSS (~11.5mA acq, up to 100mA inrush) and USB.
   (The optional WiFi module is expressly **not** on this rail — its 350mA TX
   bursts get a dedicated LDO from VSYS; see the WiFi section.)
 - CFG1/2/3 are read once at startup by the resistor-to-digital interface
@@ -208,7 +208,7 @@ GNSS kept hot via **V_BCKP** (see decisions below).
                           │                                              charge cleanly)
                           ▼
                   TPS63900DSKR ──── 3V3 rail ──┬── STM32U083  VDD/VDDA-VREF+/VDDUSB (~5–25mA)
-                  (buck-boost,                 ├── MAX-M10S   VCC / VCC_RF / V_IO   (~25–30mA acq)
+                  (buck-boost,                 ├── MAX-M10S   VCC / VCC_RF / V_IO   (~12mA acq, 100mA inrush)
                    ~75nA Iq, L=2.2µH,          ├── LIS3DH     VDD / VDD_IO          (~2µA–2mA)
                    Cin/Cout per DS)            ├── V_BCKP tap (always-on, GNSS RTC/ephemeris backup)
                                                └── pull-ups, LEDs
@@ -461,9 +461,12 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
 - **USB-C:** powers + charges + provisions. GCT USB4105 (USB-TYPE-C-019,
   C2927039), USBLC6-2SC6 ESD, MCP73831T-2ACI/OT charger, AO3401A load-share
   P-FET — all house parts (see § USB-C input + Li-ion charging).
-- **GNSS power:** keep V_BCKP alive (~15µA) for hot starts (~1–2s vs ~25s cold);
-  VCC stays on the always-on 3V3 rail — PA8 is now PERI_EN, so there is no VCC
-  gate; deep-sleep the receiver via EXTINT/UBX-RXM-PMREQ backup instead.
+- **GNSS power:** keep V_BCKP alive (~3µA, retains ephemeris) for hot starts
+  (~1–2s vs ~25s cold); VCC stays on the always-on 3V3 rail — PA8 is now PERI_EN,
+  so no VCC gate. Deep-sleep via EXTINT/UBX-RXM-PMREQ software standby: floor
+  ≈49µA, V_IO-dominated (VCC 120nA, V_IO 46µA, V_BCKP 3µA). A VCC-only gate would
+  save only that 120nA — worthless; the 28µA hardware-backup floor needs V_IO
+  gated too, not worth the back-power cost. [MAX-M10S DS UBX-20035208, T15/17]
 - **Accel:** LIS3DHTR on I2C1, INT1 = wake + tamper (INT2 generator OR'd onto the INT1 pin; 2nd pin freed → PERI_EN).
 - **Time base:** STM32 RTC w/ LSE crystal, GNSS-disciplined.
 - **Code output / lock link:** authenticated I2C (ephemerkey = master) on J2, which
