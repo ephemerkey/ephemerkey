@@ -1,0 +1,29 @@
+{
+  "start_time": 1750000000,
+  "crit": ["chain", "veto", "budget"],
+  "keys": [
+    {
+      "secret": "12345678901234567890",
+      "digits": 6,
+      "chain": {
+        "secret": "confirm-secret-000000",
+        "digits": 6,
+        "mode": "sequence",
+        "action": "lock",
+        "min_elapsed_s": 60
+      }
+    },
+    { "secret": "veto-secret-000000000", "digits": 6, "display": {} }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "policy": { "type": "always" },
+      "veto_delay_s": 120,
+      "veto_key": 1,
+      "budget": 2
+    }
+  ],
+  "confirm": { "secret": "confirm-secret-000000", "digits": 6, "mode": "sequence" }
+}

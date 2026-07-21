@@ -1,0 +1,28 @@
+# Walk-the-path: zone A -> B -> C, each leg minted within 10 min of the
+# previous; all codes entered at the destination from the notebook. The
+# ORDER and PACE are proven by the TOTP counters, not by arrival times.
+
+echo == the route: mint at A, B (+8 min), C (+16 min) ==
+gen reveal 0
+expect gen: reveal
+time +8m
+gen reveal 1
+expect gen: reveal
+time +8m
+gen reveal 2
+expect gen: reveal
+
+echo == arrive 14 min later; out-of-order entry matches nothing ==
+time +14m
+lock enter @2
+expect INVALID
+
+echo == in order: A, B, C ==
+lock enter @1
+expect PROGRESS slot=0 1/3
+lock enter @2
+expect PROGRESS slot=0 2/3
+lock enter @3
+expect FIRED slot=0 action=Unlock
+
+quit

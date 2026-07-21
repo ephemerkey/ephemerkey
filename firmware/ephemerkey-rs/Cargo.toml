@@ -1,0 +1,125 @@
+[package]
+name = "ephemerkey-rs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey STM32U083 firmware — GPS-geofenced TOTP generator (Embassy async)"
+
+[dependencies]
+# Embassy async HAL + executor. The chip feature is supplied by the selected
+# board feature (see [features]) — `stm32u083kc` for the ephemerkey board
+# (UFQFPN-32), `stm32u083rc` for the NUCLEO-U083RC (LQFP-64). Both are the same
+# STM32U0x3 die, so all the provisioning/store/USB code is board-independent.
+# NOTE: memory-x is intentionally NOT used — build.rs supplies our own
+# memory.x that carves the top 3 flash pages out of FLASH for the store journal.
+# time-driver must NOT claim TIM2 (GNSS PPS input capture) or TIM3 (buzzer PWM).
+embassy-stm32 = { version = "0.6", features = [
+    # TIM15: keeps TIM2 free (GNSS PPS capture) and TIM3 free (buzzer PWM).
+    # Move to time-driver-lptim1 (LSE) when Stop-mode work lands.
+    "time-driver-tim15",
+    "exti",
+    "defmt",
+    "time",
+] }
+embassy-executor = { version = "0.10", features = [
+    "platform-cortex-m",
+    "executor-thread",
+    "defmt",
+] }
+embassy-time = { version = "0.5", features = ["defmt", "tick-hz-32_768"] }
+embassy-sync = { version = "0.8", features = ["defmt"] }
+embassy-futures = "0.1"
+# Shared blocking I2C1 bus: the generator drives the OLED and the accel on it.
+embassy-embedded-hal = "0.6"
+static_cell = "2"
+# embedded-hal I2C trait for the shared-bus device (accel reads).
+embedded-hal = "1.0"
+# thumbv6m has no native atomic CAS; route static_cell's portable-atomic through
+# the cortex-m critical-section (already provided by critical-section-single-core).
+portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
+
+cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+
+heapless = "0.8"
+
+# Shared logic (policy engine, TOTP, reveal scheduler) — same code the host
+# emulator and tests run. no_std, no alloc.
+ephemerkey-core = { path = "../ephemerkey-core" }
+# Provisioning: framed serial protocol + sealed-envelope crypto, shared with
+# the emulator (`ekemu serial`) and host-tested there and in ekctl e2e.
+ephemerkey-provision = { path = "../ephemerkey-provision" }
+ephemerkey-envelope = { path = "../ephemerkey-envelope", features = ["defmt"] }
+ephemerkey-frame = { path = "../ephemerkey-frame" }
+# Persistent flash journal (identity page + ping-pong config record), host-tested.
+ephemerkey-store = { path = "../ephemerkey-store" }
+# Sealed-config CBOR → policy engine (shared with the emulator, host-tested).
+ephemerkey-config = { path = "../ephemerkey-config", features = ["defmt"] }
+# Generator display model (View -> Screen); the emulator renders the same crate.
+ephemerkey-ui = { path = "../ephemerkey-ui" }
+# NMEA RMC parsing for GNSS RTC discipline (host-tested); only with `gnss`.
+ephemerkey-nmea = { path = "../ephemerkey-nmea", optional = true }
+
+# USB CDC-ACM transport for the provisioning console (feature `usb-provision`).
+embassy-usb = { version = "0.6", default-features = false, features = ["defmt"], optional = true }
+
+# OLED (SSD1306 128x32 on I2C1) — the generator's dial/reveal display (feature
+# `display`). embedded-graphics supplies the glyphs; ephemerkey-ui the layout.
+ssd1306 = { version = "0.9", optional = true }
+embedded-graphics = { version = "0.8", optional = true }
+
+[features]
+# Exactly one board must be selected; it pulls in the embassy chip feature and
+# selects the pin map in `board.rs`. `board-ephemerkey` is the product board and
+# enables all on-board hardware; `board-nucleo-u083` is the bare Nucleo, so the
+# GNSS/WiFi/lock/sensor/buzzer subsystems are off by default (feature-gate them
+# on only for whatever you've wired to the Nucleo).
+default = ["board-ephemerkey"]
+board-ephemerkey = [
+    "embassy-stm32/stm32u083kc",
+    "gnss",
+    "wifi",
+    "lock",
+    "sensors",
+    "buzzer",
+    "usb-provision",
+    "display",
+]
+board-nucleo-u083 = [
+    "embassy-stm32/stm32u083rc",
+    "usb-provision",
+]
+
+# Optional hardware subsystems — each gates a `main.rs` task and its module so a
+# board without that peripheral attached compiles (and links) without it.
+gnss = ["dep:ephemerkey-nmea"]
+wifi = []
+lock = []
+sensors = []
+buzzer = []
+
+# Provisioning transport over USB FS CDC-ACM (button-gated).
+usb-provision = ["dep:embassy-usb"]
+
+# SSD1306 OLED on I2C1 for the generator display (product board).
+display = ["dep:ssd1306", "dep:embedded-graphics"]
+
+# Open sealed configs on the STM32U0 hardware AES engine (raw-PAC aes_v2) rather
+# than software AES-GCM. OFF BY DEFAULT: the driver (src/pacaes.rs) is not yet
+# hardware-verified — enable only for bench bring-up. See pacaes.rs.
+hw-aes = ["embassy-stm32/unstable-pac"]
+
+[profile.release]
+debug = 2          # keep symbols for defmt/probe-rs; not flashed
+lto = "fat"
+opt-level = "s"    # Cortex-M0+, 256K flash — size first
+codegen-units = 1
+
+[profile.dev]
+debug = 2
+lto = "thin"
+opt-level = "s"    # -O0 blows the M0+ code size and is uselessly slow

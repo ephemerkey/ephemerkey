@@ -1,0 +1,51 @@
+# The canonical ritual, end to end: three codes minted 2 min apart at the
+# far place, each valid at the vault only 30-35 min after minting. Then the
+# poison-mode tripwire. Run: cargo run -q -- scenarios/walk-vault.json < this
+
+echo == at the far place: mint three codes on cadence (t=0, +2min, +4min) ==
+gen reveal
+expect gen: reveal
+time +120
+gen reveal
+expect gen: reveal
+time +120
+gen reveal
+expect gen: reveal
+
+echo == an attacker squeezes the generator for a 4th code: poison ==
+time +10
+gen reveal
+expect DECOY
+
+echo == too early: code 1 is not valid yet (we only just minted it) ==
+lock enter @1
+expect INVALID
+
+echo == walk to the vault (~31 min from minting code 1) ==
+time +1650
+lock enter @1
+expect PROGRESS slot=0 1/3
+
+time +120
+lock enter @2
+expect PROGRESS slot=0 2/3
+
+echo == wrong pace: replaying code 2 is ignored, not a reset ==
+lock enter @2
+expect REPLAY
+
+time +120
+lock enter @3
+expect FIRED slot=0 action=Unlock
+
+echo == replay after fire: burned ==
+lock enter @3
+expect REPLAY
+
+echo == the squeezed 4th code arrives: negative match, hard lockout ==
+time +40
+lock enter @4
+expect NEGATIVE slot=0 Lockout(300)
+
+lock status
+quit

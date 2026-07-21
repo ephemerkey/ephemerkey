@@ -40,7 +40,7 @@ K.register_stdlib("Connector_Generic", "Conn_01x02", "Conn_01x03", "Conn_01x04")
 K.register_stdlib("Display_Graphic", "ER_OLEDM0.91_1x-I2C")  # 0.91" = 128x32 I2C OLED
 # vendored (espressif/kicad-libraries, CC-BY-SA 4.0 w/ lib exception) -> lib/symbols/
 K.register_lib("ephemerkey", os.path.join(HW, "lib", "symbols", "ephemerkey.kicad_sym"),
-               "ESP32-C3-MINI-1", "M24M02E-F")
+               "ESP32-C3-MINI-1", "M24M02E-F", "MAX17048")
 
 # ---- footprint shorthands ---------------------------------------------------
 R0402 = "Resistor_SMD:R_0402_1005Metric"
@@ -177,6 +177,10 @@ PSU = dict(name="PSU", file="psu.kicad_sch",
         R("R27", "36.5k"),                    # CFG1: VO(2) = 3.3V  (SEL=high preset)
         R("R28", "0R"),                       # CFG2: input current limit = Unlimited
         R("R29", "16.2k"),                    # CFG3: VO(1) = 3.3V  (SEL=low = ACTIVE)
+        dict(ref="U8", lib_id="ephemerkey:MAX17048", value="MAX17048",
+             fp="Package_DFN_QFN:TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.2mm",
+             lcsc="C2682616", mpn="MAX17048G+T10", mfr="Analog Devices"),  # fuel gauge, I2C1 @0x36 (VDD=BAT+, always on)
+        C("C32", "100nF"),                               # U8 VDD bypass (BAT+)  -- C31 is the +3V3_SW reservoir
     ])
 
 # ============================ GNSS sheet =====================================
@@ -278,10 +282,10 @@ MCU["note"] = (12, 158, """MCU / RTC / Programming — pinout (U1 STM32U083KCU6,
   9   PA3             WIFI_RXD (LPUART1_RX)      25  PA15            BTN2 SW2 (pull-up)
  10   PA4             GNSS_RESET_N (OD out)      26  PB3             ACC_INT1 (EXTI wake)
  11   PA5             BTN1 SW1 (pull-up->GND)    27  PB4             BUZZER_PWM (TIM3_CH1) -> R13 -> Q2
- 12   PA6             LED_GRN  D1 + R2 1k        28  PB5             WIFI_PWR -> U6 EN (WiFi)
- 13   PA7             LED_RED  D2 + R3 1k        29  PB6             I2C1_SCL -> U5,U7,DS1
- 14   PB0             LOCK_SDA <> J2.3 (I2C R11)  30  PB7             I2C1_SDA -> U5,U7,DS1
- 15   PB1             LOCK_SCL -> J2.4 (I2C R12)  31  PF3/BOOT0       BTN3 SW3 + DFU
+ 12   PA6             LOCK_SDA <> J2.3 (I2C3 R11)  28  PB5             WIFI_PWR -> U6 EN (WiFi)
+ 13   PA7             LOCK_SCL -> J2.4 (I2C3 R12)  29  PB6             I2C1_SCL -> U5,U7,U8,DS1
+ 14   PB0             LED_GRN  D1 + R2 1k         30  PB7             I2C1_SDA -> U5,U7,U8,DS1
+ 15   PB1             LED_RED  D2 + R3 1k         31  PF3/BOOT0       BTN3 SW3 + DFU
  16   VSS             GND                        32  VSS  / EP       GND
 RTC:  Y1 32.768kHz across PC14/PC15; C1,C2 12pF load caps (match to Y1 CL; trim via RTC SMOOTHCALIB).
 BUZZER:  LS1 MLT-8530 (3.6V magnetic transducer, ~2.7kHz, 95mA): pin1 = +3V3, pin2 = BUZZ_DRV (Q2 drain).
@@ -298,10 +302,12 @@ J2 LOCK IF (RA JST-PH 4-pin, S4B-PH-K; AUTHENTICATED I2C; ephemerkey = MASTER, l
       ~3-4A from VSYS -> exceeds JST-PH (~2A/contact) and ephemerkey's load-share path; keep actuation to the 6V servo /
       low duty w/ the lock's reservoir caps, or run a heavier dedicated power feed to the lock.
       Wake-on-I2C (no discrete line): lock wakes on SCL START; master sends a dummy/wake xfer then retries.
-      I2C pull-ups R11/R12 4.7k -> +3V3 (KEEP at 3V3: STM32 PB0/PB1 are not >3.6V tolerant -- do NOT pull to VSYS; the
-      lock's I2C VIH ~0.7*VSYS is met by a 3V3 bus across the discharge curve).  AUTH = HMAC-SHA1 (reuse smalltotp).
+      PINS: PA6/PA7 = hardware I2C3 (AF4).  (Swapped with the LEDs, which moved to PB0/PB1: PB0/PB1 carry NO
+      I2C alternate function on the U083 -- found by the fw pin-AF compile check.)
+      I2C pull-ups R11/R12 4.7k -> +3V3 (KEEP at 3V3 -- do NOT pull to VSYS: 3V3 idle meets the lock's VIH across
+      the discharge curve, and verify PA6/PA7 V_tol in the DS before reconsidering).  AUTH = HMAC-SHA1 (reuse smalltotp).
 DS1 OLED (1x4, 0.1in header, 128x32 I2C, 3V3):  1 = GND  2 = +3V3_SW (GATED, Sensors Q3)  3 = SCL (PB6)  4 = SDA (PB7).
-      Shares I2C1 with U5 (OLED 0x3C, LIS3DH 0x18); pull-ups R9/R10 on Sensors sheet serve both.""")
+      Shares I2C1 with U5 0x18, U7 0x50-53, U8 0x36 (fuel gauge, PSU sheet); pull-ups R9/R10 on Sensors sheet serve all (GATED).""")
 
 PSU["note"] = (12, 158, """POWER  --  USB-C -> charge -> load-share -> buck-boost.   Components PLACED, not wired.
 
@@ -346,7 +352,18 @@ BULK:  C15 = VBUS_5V.   C16 = BAT+.
 CFG (TPS63900 R2D):  resistors read ONCE at startup (EN rising), then the pins are disabled -- power-cycle to change.
   SEL=GND makes VO(1)/R29 the live setting; R27 = 36.5k so a SEL=high fault still gives 3.3V.  R28 = 0R -> input
   current limit 'Unlimited' (needs L1 Isat >= 2A: FNR3015S2R2MT is 2A -- OK).  Use 1%, <=200ppm parts (TI: total
-  RMS error < 3%); keep CFG traces short, < 10pF pin capacitance, no test points / caps on CFG nets.""")
+  RMS error < 3%); keep CFG traces short, < 10pF pin capacitance, no test points / caps on CFG nets.
+
+U8 MAX17048 FUEL GAUGE (TDFN-8 2x2 + EP; ModelGauge 1S SoC; 3uA hibernate; I2C1 target @0x36 fixed):
+  1  CTG    GND                                5  /ALRT  NC (no spare MCU pin -- FW polls SoC; 0x36 has an alert reg)
+  2  CELL   BAT+  (sense AT the cell terminal, 6  QSTRT  GND (unused; do NOT float)
+            J4.1 side -- NOT VSYS)             7  SCL    <- PB6 (I2C1 -- shared w/ U5 0x18, DS1 0x3C, U7 0x50-53;
+  3  VDD    BAT+  (C32 100nF close)                       pull-ups R9/R10 on Sensors sheet, GATED)
+  4  GND    GND                                8  SDA    <> PB7 (I2C1)
+  9  EP     GND
+  STAYS POWERED from BAT+ (continuous ModelGauge SoC); only readable when PERI_EN gates R9/R10 on.  SDA/SCL are
+  tolerant above VDD (datasheet: logic independent of VDD) -> 3V3 bus vs. fading BAT+ is fine.
+  VERIFY vs DS before fab: EP-to-GND requirement and the TDFN-8 2x2 land (bundled EP0.8x1.2 footprint vs 21-0168).""")
 
 GNSS["note"] = (12, 150, """GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.
 MD1 MAX-M10S (18-pin LCC):
@@ -374,11 +391,12 @@ U5 LIS3DH:
   6  SDA      -> PB7 (I2C1)          14  VDD      +3V3 (C23 100nF)
   7  SDO/SA0  addr 0x18(GND)/0x19    15  ADC2     NC
   8  CS       +3V3 (force I2C)       16  ADC1     NC
-I2C1:  R9/R10 4.7k pull-ups to +3V3_SW (GATED) — serve U5 + DS1 (OLED, MCU sheet) + U7 (EEPROM, Storage sheet).
+I2C1:  R9/R10 4.7k pull-ups to +3V3_SW (GATED) — serve U5 + DS1 (OLED, MCU sheet) + U7 (EEPROM, Storage sheet) + U8 (fuel gauge, PSU sheet).
 +3V3_SW load switch = Q3 AO3401A hi-side + Q4 AO3400A gate-drv + R30 gate-PU + R31 PERI_EN-PD + C31 1uF.
-  Gates DS1 + U7 + R9/R10 so nothing leaks in Stop.  U5 stays on always-on +3V3 (wake source); FW drives
-  PB6/PB7 LOW before Stop so the powered LIS3DH never sees the unpulled bus.  PERI_EN active-high from the
-  freed INT2 pin (PA8; PA3 on the no-WiFi build).  Tamper now on INT1 (I1_IA2); may zeroize TOTP (DESIGN.md).""")
+  Gates DS1 + U7 + R9/R10 so nothing leaks in Stop.  U5 (wake source, +3V3) and U8 (fuel gauge, BAT+) stay on
+  always-on rails; ONLY the pull-ups gate off.  FW drives PB6/PB7 LOW before Stop so the powered LIS3DH / MAX17048
+  never see the unpulled bus.  PERI_EN active-high from the freed INT2 pin (PA8; PA3 on the no-WiFi build).
+  Tamper now on INT1 (I1_IA2); may zeroize TOTP (DESIGN.md).""")
 
 WIFI["note"] = (12, 130, """WiFi (OPTIONAL) — MD2 ESP32-C3-MINI-1 + U6 AP2112K-3.3.  PLACED, not wired.  Depopulate this sheet to omit WiFi.
 POWER:  WIFI_3V3 comes from VSYS via U6 — NOT from +3V3.  TX bursts (350mA @ +21dBm, 802.11b) must never load the
@@ -414,7 +432,7 @@ U7 M24M02E-F (UFDFPN8):
   4  VSS  GND                              7  /WC   GND (writes enabled; FW uses the SWP register instead)
   9  EP   GND (datasheet: VSS or float)    8  VCC   +3V3_SW (GATED — Sensors Q3; C30 100nF close)
 I2C ADDR:  1010 C2 A17 A16 -> 0x50-0x53 (C2=0 default; CDA register can move/lock it).  ID page via 1011 -> 0x58+.
-  No conflicts w/ LIS3DH 0x18/0x19 + OLED 0x3C.  Bus is good to 1MHz (bus runs at 400kHz for the other targets).
+  No conflicts w/ LIS3DH 0x18/0x19 + OLED 0x3C + MAX17048 0x36.  Bus is good to 1MHz (runs at 400kHz for the other targets).
 CONTENT (DESIGN.md "Storage, Logging & OTA"):  append-only audit ring — 32B records (seq, RTC ts, event type,
   fix meta, code hash, chained HMAC-SHA1 tag), ENCRYPTED with a key held in INTERNAL flash (RDP/HDP).
   The external chip is desolderable: it carries no plaintext and no secrets; an excised/edited record breaks

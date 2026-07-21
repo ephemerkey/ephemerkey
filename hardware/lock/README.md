@@ -144,15 +144,15 @@ a standard 4-pin I2C cable, straight-through):
 |-----|---------------------------|--------------------------|
 | 1 | GND (+ actuation return) | GND |
 | 2 | **VCC ← powers the lock** (VSYS in) | **VSYS** (battery/system rail out) |
-| 3 | `SDA` ↔ PB1 | `LOCK_SDA` (PB0) |
-| 4 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PB1) |
+| 3 | `SDA` ↔ PB1 | `LOCK_SDA` (PA6, I2C3) |
+| 4 | `SCL` → PB0 (clock + wake) | `LOCK_SCL` (PA7, I2C3) |
 
 The lock has **no local battery** — its VCC (and the boost/actuator draw) comes in
 on J2.2 from ephemerkey's VSYS rail. **Current caveat:** a 12 V solenoid pull-in is
 ~3–4 A from VSYS, beyond a JST-PH contact (~2 A) and ephemerkey's load-share path —
 favor the 6 V servo / low-duty buffered by C5/C8, or run a heavier dedicated feed.
-The I2C pull-ups live on ephemerkey at +3V3 (its PB0/PB1 aren't >3.6 V tolerant, so
-the bus must not be pulled to VSYS). The lock (running at VSYS) reads the 3.3 V idle
+The I2C pull-ups live on ephemerkey at +3V3 (do not pull the bus to VSYS — the STM32
+pins are 3.3 V-domain). The lock (running at VSYS) reads the 3.3 V idle
 level fine across the discharge curve. The lock is the **target** at addr 0x60 with
 **no separate wake line** — it wakes from power-down on the first I2C START (a
 pin-change interrupt on SCL), so we don't mix a discrete "button"-style input with

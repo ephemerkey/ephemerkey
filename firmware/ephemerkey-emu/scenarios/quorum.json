@@ -1,0 +1,21 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    { "secret": "alice-secret-00000000", "display": { "mode": "plain" } },
+    { "secret": "bob-secret-0000000000", "display": { "mode": "plain" } }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "progress": true,
+      "policy": {
+        "type": "quorum",
+        "m": 2,
+        "keys": [0, 1],
+        "window_s": 300,
+        "alternating": true
+      }
+    }
+  ]
+}

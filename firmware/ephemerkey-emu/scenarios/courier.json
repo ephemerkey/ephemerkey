@@ -1,0 +1,21 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    { "secret": "zone-a-secret-0000000", "display": { "mode": "plain" } },
+    { "secret": "zone-b-secret-0000000", "display": { "mode": "plain" } },
+    { "secret": "zone-c-secret-0000000", "display": { "mode": "plain" } }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "progress": true,
+      "policy": {
+        "type": "path",
+        "leg_keys": [0, 1, 2],
+        "leg_deadline_s": 600,
+        "delay_max_s": 3600
+      }
+    }
+  ]
+}

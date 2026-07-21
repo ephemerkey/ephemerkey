@@ -1,0 +1,23 @@
+[package]
+name = "ephemerkey-emu"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Host emulator for the ephemerkey generator + lock: virtual clock, display mimicry, scriptable CLI"
+
+[[bin]]
+name = "ekemu"
+path = "src/main.rs"
+
+[dependencies]
+ephemerkey-core = { path = "../ephemerkey-core", features = ["introspect"] }
+ephemerkey-envelope = { path = "../ephemerkey-envelope" }
+ephemerkey-config = { path = "../ephemerkey-config" }
+ephemerkey-crc = { path = "../ephemerkey-crc" }
+ephemerkey-ui = { path = "../ephemerkey-ui" }
+ephemerkey-frame = { path = "../ephemerkey-frame" }
+ed25519-dalek = "2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

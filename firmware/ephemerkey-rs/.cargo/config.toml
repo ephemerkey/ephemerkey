@@ -1,0 +1,8 @@
+[build]
+target = "thumbv6m-none-eabi"    # Cortex-M0+
+
+[target.thumbv6m-none-eabi]
+runner = "probe-rs run --chip STM32U083KC"
+
+[env]
+DEFMT_LOG = "info"

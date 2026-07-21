@@ -283,10 +283,10 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 9 | PA3 | WIFI_RXD | LPUART1_RX ← ESP IO21 (1k); wake-from-Stop on RX |
 | 10 | PA4 | GNSS RESET_N | open-drain output to GNSS |
 | 11 | PA5 | Button | SW1 user button 1 (internal pull-up, to GND) |
-| 12 | PA6 | LED green | in-fence / code-valid |
-| 13 | PA7 | LED red | out-of-fence / fault |
-| 14 | PB0 | LOCK_SDA | I2C SDA ↔ lock (authenticated link; ephemerkey = master) |
-| 15 | PB1 | LOCK_SCL | I2C SCL → lock (authenticated link; ephemerkey = master) |
+| 12 | PA6 | LOCK_SDA | I2C3_SDA (AF4) ↔ lock (authenticated link; ephemerkey = master) |
+| 13 | PA7 | LOCK_SCL | I2C3_SCL (AF4) → lock (authenticated link; ephemerkey = master) |
+| 14 | PB0 | LED green | in-fence / code-valid |
+| 15 | PB1 | LED red | out-of-fence / fault |
 | 16 | VSS_1 | GND | |
 | 17 | VDDUSB | 3V3 USB | 100nF (USB transceiver supply) |
 | 18 | PA8 | PERI_EN | peripheral power-gate → Sensors Q3 (+3V3_SW); active-high, R31 pulldown = off at reset |
@@ -300,17 +300,17 @@ verified against the STM32U083 datasheet AF table for the UFQFPN-32 package.
 | 26 | PB3 | LIS3DH INT1 | EXTI wake-on-motion (EXTI3) |
 | 27 | PB4 | BUZZER_PWM | TIM3_CH1 → LS1 buzzer via Q2 low-side driver |
 | 28 | PB5 | WIFI_PWR | → AP2112K EN (100k pulldown — WiFi off by default) |
-| 29 | PB6 | I2C1_SCL | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
-| 30 | PB7 | I2C1_SDA | LIS3DH + OLED + log EEPROM (and optional GNSS DDC) |
+| 29 | PB6 | I2C1_SCL | LIS3DH + OLED + log EEPROM + fuel gauge (and optional GNSS DDC) |
+| 30 | PB7 | I2C1_SDA | LIS3DH + OLED + log EEPROM + fuel gauge (and optional GNSS DDC) |
 | 31 | PF3-BOOT0 | Button + BOOT0 | SW3 user button 3 (to +3V3); 10k pull-down = boot from flash. Hold SW3 at reset → USB DFU |
 | 32 | VSS_2 | GND | |
 | EP (33) | GND | thermal/exposed pad | via stitching |
 
-**Peripheral summary:** USART1 (GNSS), LPUART1 (WiFi, wake-from-Stop), I2C
-(master, authenticated lock link: PB0/PB1, wake-on-I2C), I2C1 (accel, OLED,
-log EEPROM), TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning),
-2×EXTI (accel, PB3/PA8), TIM3_CH1 (buzzer PWM, PB4), SWD (debug), WIFI_PWR
-gate (PB5).
+**Peripheral summary:** USART1 (GNSS), LPUART1 (WiFi, wake-from-Stop), I2C3
+(master, authenticated lock link: PA6/PA7), I2C1 (accel, OLED,
+log EEPROM, fuel gauge), TIM2 capture (PPS), RTC+LSE (TOTP time), USB FS (provisioning),
+1×EXTI (accel INT1, PB3), TIM3_CH1 (buzzer PWM, PB4), SWD (debug), WIFI_PWR
+gate (PB5), PERI_EN peripheral load-switch gate (PA8).
 **No spare GPIO** — the 32-pin package is fully allocated.
 
 **Notes**
@@ -321,6 +321,10 @@ gate (PB5).
 - GNSS UART stays on **USART1** — the duty-cycle design keeps the MCU awake
   while GNSS is on. LPUART1 (wake-on-RX in Stop mode) is allocated to the WiFi
   link on PA2/PA3.
+- The lock link and the LEDs **swapped pins** (rev 0.2): PB0/PB1 carry no I2C
+  alternate function on the U083 (caught by the Rust firmware's compile-time
+  AF check), while PA6/PA7 are I2C3 SDA/SCL at AF4. LEDs are
+  function-agnostic, so they took PB0/PB1.
 
 ## Storage, Logging & OTA
 
@@ -341,6 +345,21 @@ the EEPROM is desolderable, so it stores no plaintext and no secrets, and any
 excised or edited record breaks every subsequent chain tag (tamper-evident
 audit trail). Torn writes are detected by CRC + sequence and skipped. 4M-cycle
 endurance → decades of ring logging.
+
+**Counters.** The confirm-TOTP event counter (bumped every fire/relock) and
+the config anti-rollback `seq` are monotonic and must survive power loss, but
+they are written far more often than the ~1 KB config blob — so they live in a
+**separate 2×2KB append region**, not the config record. Unlock/lock events
+aren't frequent, but we size for them anyway: exploiting NOR's program-`1→0` /
+bulk-erase asymmetry, each bump programs the next fresh 64-bit double-word
+(STM32U0 ECC forbids re-writing a unit before erase, so we append rather than
+re-flip in place) and the region is bulk-erased only when full. That's 256
+bumps per 2 KB page, ~5M bumps across the two-page queue before the erase-cycle
+limit (verify the U0 number) — **>100 years even at a heavy 100 events/day**,
+so no reserve-ahead is needed for wear. A reboot resumes from the last
+persisted counter; the small skip is absorbed by the receipt validator's
+RFC 4226 look-ahead, so no counter is ever reused. Built on the
+`sequential-storage` log (ECC-safe single-write-per-word), not hand-rolled.
 
 **OTA flow (STM32-from-WiFi; later firmware work, no extra hardware):**
 
@@ -365,8 +384,8 @@ a standard 4-pin I2C cable), straight-through to the lock's J2:
 |--------|-----|-----|----------|
 | 1 | GND | — | common ground / actuation return |
 | 2 | VSYS | out | **battery/system rail — powers the lock** (the lock has no own cell) |
-| 3 | LOCK_SDA | bidir (PB0) | I2C data |
-| 4 | LOCK_SCL | out (PB1) | I2C clock — ephemerkey is master; also the lock's wake edge |
+| 3 | LOCK_SDA | bidir (PA6, I2C3) | I2C data |
+| 4 | LOCK_SCL | out (PA7, I2C3) | I2C clock — ephemerkey is master; also the lock's wake edge |
 
 The lock is **powered from ephemerkey** over this connector (J2.2 = VSYS, the
 load-share/battery rail); it carries no local battery. There is **no separate
@@ -379,10 +398,11 @@ this cable. A 12 V solenoid pull-in is ~3–4 A from VSYS — beyond a JST-PH co
 (~2 A) and ephemerkey's load-share path. Keep actuation to the **6 V servo** / low
 duty buffered by the lock's reservoir caps, or add a heavier dedicated power feed.
 
-The I2C pull-ups (≈4.7 kΩ, R11/R12) stay on **ephemerkey** to **+3V3** — the STM32
-PB0/PB1 are not >3.6 V tolerant, so the bus must not be pulled to VSYS. The lock's
-open-drain target sinks fine, and its VIH (~0.7·VSYS) is met by the 3.3 V idle level
-across the discharge curve. Keep the cable short (100 kHz).
+The I2C pull-ups (≈4.7 kΩ, R11/R12) stay on **ephemerkey** to **+3V3** — do not
+pull the bus to VSYS (verify PA6/PA7 voltage tolerance in the datasheet before ever
+reconsidering; a 3.3 V bus is correct regardless). The lock's open-drain target
+sinks fine, and its VIH (~0.7·VSYS) is met by the 3.3 V idle level across the
+discharge curve. Keep the cable short (100 kHz).
 
 **Register interface + authentication (firmware HMAC, no secure element).** The lock
 exposes `STATUS` (read), `NONCE` (read), and `COMMAND` (write) registers; a pairing
@@ -399,7 +419,7 @@ secret (distinct from the TOTP secret) is held in flash on both boards.
 
 **Firmware plan.** Both boards use **HMAC-SHA1**, reusing `smalltotp`'s existing
 HMAC-SHA1 (no extra crypto; HMAC-SHA1 stays sound — it doesn't rely on SHA1 collision
-resistance). ephemerkey drives the I2C master transactions (PB0/PB1) from its superloop;
+resistance). ephemerkey drives the I2C master transactions (I2C3, PA6/PA7) from firmware;
 the lock side (ATtiny1616 sleep/wake, door-hall sampling, peak-and-hold or servo drive,
 fail-secure timing) is specified in `hardware/lock/README.md`.
 
@@ -478,6 +498,7 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
 | Li-ion charger | MCP73831T-2ACI/OT | SOT-23-5 | 1 | 1S Li-ion charger (4.2V) | C424093 | ~2.7k | extended |
 | USB ESD | USBLC6-2SC6 | SOT-23-6 | 1 | USB VBUS/D± ESD | C2687116 | ~231k | extended |
 | Load-share FET | AO3401A | SOT-23 | 1 | USB/battery power path (P-FET) | C15127 | ~1.2M | extended |
+| Fuel gauge | MAX17048G+T10 | TDFN-8 2×2 | 1 | 1S battery SoC (ModelGauge), I2C1 @0x36, 3µA hibernate | C2682616 | — | extended |
 
 > LCSC numbers verified 2026-06-21 (jlcsearch API; STM32U083KCU6 confirmed on
 > the LCSC storefront under C22459164, which jlcsearch does not index). Stock

@@ -1,0 +1,21 @@
+[package]
+name = "ephemerkey-config"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey device config: integer-keyed CBOR policy schema → core engine (no_std, shared by firmware + emulator)"
+
+[dependencies]
+# The policy engine types this crate builds (KeyDef, Slot, Generator,
+# LockEngine, Validator, …).
+ephemerkey-core = { path = "../ephemerkey-core" }
+# The CBOR codec + the geofence config subset (Zone/Role) it already pins.
+ephemerkey-envelope = { path = "../ephemerkey-envelope" }
+
+[features]
+default = []
+# Pass defmt through to core so the firmware can log the built types.
+defmt = ["ephemerkey-core/defmt", "ephemerkey-envelope/defmt"]
+
+[dev-dependencies]
+ephemerkey-core = { path = "../ephemerkey-core", features = ["introspect"] }

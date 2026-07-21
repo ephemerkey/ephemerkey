@@ -1,0 +1,8 @@
+[package]
+name = "ephemerkey-nmea"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey NMEA 0183 parsing: checksum-verified RMC (UTC date/time + fix status) for GNSS RTC discipline — no_std, host-tested"
+
+[dependencies]

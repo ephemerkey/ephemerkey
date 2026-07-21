@@ -1,0 +1,14 @@
+[package]
+name = "ephemerkey-provision"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey provisioning engine: framed serial protocol handler (identity, challenge, sealed config with owner TOFU, acks, events, wifi) — no_std, transport-agnostic"
+
+[dependencies]
+ephemerkey-crc = { path = "../ephemerkey-crc" }
+ephemerkey-envelope = { path = "../ephemerkey-envelope" }
+ephemerkey-frame = { path = "../ephemerkey-frame" }
+ed25519-dalek = { version = "2", default-features = false }
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
+sha2 = { version = "0.10", default-features = false }

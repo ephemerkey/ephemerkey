@@ -1,0 +1,19 @@
+[package]
+name = "ephemerkey-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey shared core: TOTP, code-slot policy engine, reveal scheduler (no_std)"
+
+[dependencies]
+# RustCrypto, no_std
+sha1 = { version = "0.10", default-features = false }
+hmac = { version = "0.12", default-features = false }
+defmt = { version = "1.0", optional = true }
+
+[features]
+default = []
+defmt = ["dep:defmt"]
+# Exposes ground truth (e.g. Reveal::decoy) for the emulator/tests ONLY.
+# Firmware must never enable this: the display path is not allowed to know.
+introspect = []

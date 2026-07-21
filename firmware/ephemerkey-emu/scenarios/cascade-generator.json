@@ -1,0 +1,16 @@
+{
+  "start_time": 1750000000,
+  "unlock_window_s": 30,
+  "crit": ["cascade"],
+  "keys": [
+    { "secret": "B-REVEAL-SECRET-00000", "digits": 6, "decoy": 1, "display": { "mode": "plain" }, "gated": true },
+    { "secret": "B-DECOY-TWIN-00000000", "digits": 6 },
+    { "secret": "A-UNLOCK-SECRET-00000", "digits": 6, "display": {} },
+    { "secret": "A-DURESS-SECRET-00000", "digits": 6, "display": {} }
+  ],
+  "slots": [
+    { "key": 2, "action": "unlock", "policy": { "type": "always" } },
+    { "key": 3, "action": "duress", "policy": { "type": "always" } },
+    { "key": 0, "action": "unlock", "policy": { "type": "always" } }
+  ]
+}

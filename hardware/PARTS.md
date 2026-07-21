@@ -27,6 +27,7 @@ from `scripts/ephemerkey.schgen.py` — **edit that, not the `.kicad_sch` files*
 | MD2 | ESP32-C3-MINI-1 (WiFi, optional) | ESP32-C3-MINI-1-N4 | C2838502 | ephemerkey:ESP32-C3-MINI-1 (vendored from espressif/kicad-libraries, w/ 3D model) |
 | U6 | AP2112K-3.3 (WiFi LDO, optional) | AP2112K-3.3TRG1 | C51118 | Package_TO_SOT_SMD:SOT-23-5 |
 | U7 | M24M02E (2Mbit audit-log EEPROM) | M24M02E-FMC6TG | C29549719 | ephemerkey:ST_UFDFPN8-8-1EP_2x3mm_P0.5mm_EP1.4x1.4mm (vendored; verified vs ST UFDFPN8 outline) |
+| U8 | MAX17048 (1S fuel gauge, I2C1 @0x36) | MAX17048G+T10 | C2682616 | Package_DFN_QFN:TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.2mm (stdlib; sym `ephemerkey:MAX17048` authored from ADI DS, cross-checked vs notchdeck's — verify EP land vs 21-0168) |
 
 ## Frequency / power magnetics
 

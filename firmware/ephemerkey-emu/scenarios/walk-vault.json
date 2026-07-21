@@ -1,0 +1,36 @@
+{
+  "start_time": 1750000000,
+  "keys": [
+    {
+      "secret": "12345678901234567890",
+      "digits": 6,
+      "decoy": 1,
+      "display": {
+        "mode": "scatter",
+        "dwell_ms": 800,
+        "reveal_s": 5,
+        "once": "decoy",
+        "gap_min_s": 90
+      }
+    },
+    { "secret": "decoy-secret-00000000", "digits": 6 }
+  ],
+  "slots": [
+    {
+      "key": 0,
+      "action": "unlock",
+      "progress": true,
+      "reset_on_invalid": true,
+      "negative": "lockout:300",
+      "policy": {
+        "type": "sequence",
+        "n": 3,
+        "window_s": 600,
+        "gap_min_s": 90,
+        "gap_max_s": 240,
+        "delay_min_s": 1800,
+        "delay_max_s": 2100
+      }
+    }
+  ]
+}

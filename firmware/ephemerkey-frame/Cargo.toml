@@ -1,0 +1,8 @@
+[package]
+name = "ephemerkey-frame"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "ephemerkey serial framing: EK magic + type + len + CRC-16/CCITT-FALSE, no_std incremental parser (ephemerkey-control docs/serial-protocol.md)"
+
+[dependencies]
