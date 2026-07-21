@@ -431,7 +431,8 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
   C2927039), USBLC6-2SC6 ESD, MCP73831T-2ACI/OT charger, AO3401A load-share
   P-FET — all house parts (see § USB-C input + Li-ion charging).
 - **GNSS power:** keep V_BCKP alive (~15µA) for hot starts (~1–2s vs ~25s cold);
-  MCU may still gate VCC via PA8.
+  VCC stays on the always-on 3V3 rail — PA8 is now PERI_EN, so there is no VCC
+  gate; deep-sleep the receiver via EXTINT/UBX-RXM-PMREQ backup instead.
 - **Accel:** LIS3DHTR on I2C1, INT1 = wake + tamper (INT2 generator OR'd onto the INT1 pin; 2nd pin freed → PERI_EN).
 - **Time base:** STM32 RTC w/ LSE crystal, GNSS-disciplined.
 - **Code output / lock link:** authenticated I2C (ephemerkey = master) on J2, which
@@ -443,7 +444,8 @@ fail-secure timing) is specified in `hardware/lock/README.md`.
    JST-PH connector; USB-C charges via MCP73831 + load-share. Use a protected
    pack or add a 1S protection IC. Remaining: pick cell capacity → set Rprog.
 2. ~~**GNSS power gating**~~ **RESOLVED:** keep V_BCKP alive for hot starts
-   (energy math strongly favors it); optionally also gate VCC via PA8/GNSS_EN.
+   (energy math strongly favors it); VCC left ungated (PA8 reassigned to
+   PERI_EN) — deep-sleep the receiver via EXTINT/PMREQ backup, not a VCC cut.
 3. **W3011A placement/keep-out:** confirm ground clearance and match topology
    against the antenna datasheet; reserve a board corner.
 4. ~~**TPS63900 CFG/SEL strapping**~~ **RESOLVED:** SEL = GND (no spare GPIO
