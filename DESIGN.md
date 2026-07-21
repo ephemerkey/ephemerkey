@@ -71,6 +71,14 @@ firmware are designed here. Repository layout follows `reefvolt-sensorbuddy/`.
   external DC-block cap) and an internal LNA (low-gain mode default) that supplies
   the gain; no external LNA/bias-tee. (Per u-blox MAX-M10S integration manual
   UBX-20053088. LNA_EN available if an active antenna is ever fitted.)
+- **Antenna contingency (cap-select U.FL):** RF_IN taps two series positions —
+  **Rm1** (0 Ω → the on-board W3011A, default) and **Cs1** (DNP → **J6**, a
+  Hirose U.FL-R-SMT-1 on `Connector_Coaxial:U.FL_…`). Populate exactly one: to
+  run an external antenna, DNP Rm1, fit Cs1 (0 Ω or a DC-block cap), and cable
+  in via the U.FL. A *passive* external patch needs no bias; an *active* antenna
+  (built-in LNA) needs a bias-tee (RFC from +3V3 + DC block) — not fitted, add if
+  that route is taken. Keeps the tiny chip antenna as the cheap default while
+  leaving a path to a higher-gain external element.
 
 ### Power: TPS63900DSKR (buck-boost)
 

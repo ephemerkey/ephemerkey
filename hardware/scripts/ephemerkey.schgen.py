@@ -205,6 +205,15 @@ GNSS = dict(name="GNSS", file="gnss.kicad_sch", title="GNSS (MAX-M10S + antenna)
         R("Rm1", "0R"),
         C("Cm2", "1.8pF"),
         dict(ref="Cm3", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),
+        # Antenna contingency: capacitor-select the RF feed between the on-board
+        # W3011A (Rm1, default) and an external antenna on the U.FL (J6, via Cs1).
+        # Cs1 is DNP by default -- populate it (0R or a DC-block cap) and DNP Rm1
+        # to switch to U.FL. J6 = generic 2-pin symbol (1 = center/signal, 2 =
+        # shield/GND) on the Hirose U.FL-R-SMT-1 land.
+        dict(ref="J6", lib_id="Connector_Generic:Conn_01x02", value="U.FL",
+             fp="Connector_Coaxial:U.FL_Hirose_U.FL-R-SMT-1_Vertical",
+             lcsc="C88373", mpn="U.FL-R-SMT-1(10)", mfr="Hirose"),
+        dict(ref="Cs1", lib_id="Device:C", value="DNP", fp=C0402, dnp=True),  # RF_IN -> J6 select
     ])
 
 # ============================ Sensors sheet ==================================
@@ -379,7 +388,12 @@ MD1 MAX-M10S (18-pin LCC):
 ANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed
           (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up
           (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.
-          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.""")
+          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.
+ANT SELECT (contingency):  RF_IN taps two series positions -- Rm1 (0R -> W3011A chip ant, DEFAULT) and Cs1
+          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  External antenna: DNP Rm1, fit Cs1 (0R or a DC-block cap),
+          attach via U.FL.  A passive external patch needs no bias.  An ACTIVE antenna (built-in LNA) needs a
+          bias-tee to feed DC up the coax -- NOT fitted here; add an L (RFC) from +3V3 + DC-block if that route
+          is taken.  Keep the unused branch stub short (<< lambda/20).""")
 
 SENSORS["note"] = (12, 70, """Sensors — pinout (U5 LIS3DHTR, LGA-16).  PLACED, not wired.
 U5 LIS3DH:

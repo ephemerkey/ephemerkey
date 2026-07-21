@@ -1391,8 +1391,166 @@
 			)
 			(embedded_fonts no)
 		)
+			(symbol "Connector_Generic:Conn_01x02"
+		(pin_names
+			(offset 1.016)
+			(hide yes)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "J"
+			(at 0 2.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "Conn_01x02"
+			(at 0 -5.08 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_keywords" "connector"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_fp_filters" "Connector*:*_1x??_*"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "Conn_01x02_1_1"
+			(rectangle
+				(start -1.27 1.27)
+				(end 1.27 -3.81)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type background)
+				)
+			)
+			(rectangle
+				(start -1.27 0.127)
+				(end 0 -0.127)
+				(stroke
+					(width 0.1524)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(rectangle
+				(start -1.27 -2.413)
+				(end 0 -2.667)
+				(stroke
+					(width 0.1524)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(pin passive line
+				(at -5.08 0 0)
+				(length 3.81)
+				(name "Pin_1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at -5.08 -2.54 0)
+				(length 3.81)
+				(name "Pin_2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
 	)
-	(text "GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.\nMD1 MAX-M10S (18-pin LCC):\n  1  GND        GND                  10  GND        GND\n  2  TXD        -> PA10 (NMEA)       11  RF_IN      <- match <- AE1\n  3  RXD        <- PA9  (NMEA)       12  GND        GND\n  4  TIMEPULSE  -> PA0 (1PPS)        13  LNA_EN     NC (passive antenna)\n  5  EXTINT     <- PA1               14  VCC_RF     L2 ferrite + C17 100nF / C18 10pF\n  6  V_BCKP     +3V3 always-on, C21  15  VIO_SEL    open = 3.3V\n  7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)\n  8  VCC        +3V3, C19 10uF/C20   17  SCL        NC\n  9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet\nANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed\n          (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up\n          (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.\n          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner."
+	)
+	(text "GNSS — pinout (MD1 MAX-M10S-00B, AE1 W3011A).  PLACED, not wired.\nMD1 MAX-M10S (18-pin LCC):\n  1  GND        GND                  10  GND        GND\n  2  TXD        -> PA10 (NMEA)       11  RF_IN      <- match <- AE1\n  3  RXD        <- PA9  (NMEA)       12  GND        GND\n  4  TIMEPULSE  -> PA0 (1PPS)        13  LNA_EN     NC (passive antenna)\n  5  EXTINT     <- PA1               14  VCC_RF     L2 ferrite + C17 100nF / C18 10pF\n  6  V_BCKP     +3V3 always-on, C21  15  VIO_SEL    open = 3.3V\n  7  V_IO       +3V3, C22 100nF      16  SDA        NC (UART used)\n  8  VCC        +3V3, C19 10uF/C20   17  SCL        NC\n  9  RESET_N    <- PA4 (OD)          18  SAFEBOOT_N pull per datasheet\nANTENNA:  AE1 W3011A feed -> Rm1 (0R series) -> 50 ohm CPWG -> MD1 RF_IN.  Cm2 = 1.8pF shunt at the antenna feed\n          (W3011A datasheet reference value; -A rated w/ shunt 1.8pF), Cm3 = DNP (RF_IN-side).  VNA-trim at bring-up\n          (S11 < -10dB, 1559-1606 MHz).  MAX-M10S RF_IN is 50 ohm w/ internal DC block -> no external DC-block cap.\n          Honor the 4.0 x 6.25 mm ground keep-out under/around AE1; reserve a board corner.\nANT SELECT (contingency):  RF_IN taps two series positions -- Rm1 (0R -> W3011A chip ant, DEFAULT) and Cs1\n          (DNP -> J6 U.FL).  Populate EXACTLY ONE.  External antenna: DNP Rm1, fit Cs1 (0R or a DC-block cap),\n          attach via U.FL.  A passive external patch needs no bias.  An ACTIVE antenna (built-in LNA) needs a\n          bias-tee to feed DC up the coax -- NOT fitted here; add an L (RFC) from +3V3 + DC-block if that route\n          is taken.  Keep the unused branch stub short (<< lambda/20)."
 		(exclude_from_sim no)
 		(at 12 137.92 0)
 		(effects
@@ -3876,6 +4034,90 @@
 			(project "ephemerkey"
 				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
 					(reference "Rm1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 30.4800 152.4000 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "8ae3783c-4c67-4519-8909-bda0720f5748")
+		(property "Reference" "J6"
+			(at 34.2900 149.8600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "U.FL"
+			(at 34.2900 154.9400 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Connector_Coaxial:U.FL_Hirose_U.FL-R-SMT-1_Vertical"
+			(at 30.4800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 30.4800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "LCSC" "C88373"
+			(at 30.4800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "MPN" "U.FL-R-SMT-1(10)"
+			(at 30.4800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Manufacturer" "Hirose"
+			(at 30.4800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "d7a0014d-8cf5-47d7-a250-91a4dc1c6c73"))
+		(pin "2" (uuid "55c3a62a-000b-4176-917e-8dd3cd2695c6"))
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
+					(reference "J6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 68.5800 152.4000 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp yes)
+		(uuid "abf739e5-7b63-468b-bf3f-9ce607ca0c3c")
+		(property "Reference" "Cs1"
+			(at 72.3900 149.8600 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Value" "DNP"
+			(at 72.3900 154.9400 0)
+			(effects (font (size 1.27 1.27)) (justify left))
+		)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 68.5800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(property "Datasheet" "~"
+			(at 68.5800 152.4000 0)
+			(effects (font (size 1.27 1.27))) (hide yes)
+		)
+		(pin "1" (uuid "59b9b246-21e8-4ee4-a68b-8773e7cd1a40"))
+		(pin "2" (uuid "5624481f-4476-4f74-a2d9-f4cfaa37e652"))
+		(instances
+			(project "ephemerkey"
+				(path "/ec65bc99-660e-415e-984b-47a2d6256a80/29c883c7-b979-475a-b755-896ca253f844"
+					(reference "Cs1")
 					(unit 1)
 				)
 			)
